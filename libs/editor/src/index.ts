@@ -1,1 +1,1 @@
-export * from './lib/editor/editor.component';
+export * from './lib/editor/feature/components/editor.component';
