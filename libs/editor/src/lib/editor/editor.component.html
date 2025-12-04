@@ -1,0 +1,78 @@
+<div class="text-editor">
+  <div class="text-editor-container">
+    <div class="text-editor-textarea">
+      <div class="text-editor-toolbar">
+        <!-- Text style -->
+        <button>
+          <i class="fas fa-bold"></i>
+        </button>
+        <button>
+          <i class="fas fa-italic"></i>
+        </button>
+        <button>
+          <i class="fas fa-underline"></i>
+        </button>
+        <button>
+          <i class="fas fa-strikethrough"></i>
+        </button>
+
+        <!-- Text color -->
+        <div class="color-picker">
+          <input type="color" />
+          <span class="color-indicator">A</span>
+        </div>
+        <div class="color-picker">
+          <input type="color" />
+          <span class="color-indicator">BG</span>
+        </div>
+
+        <!-- Alignment -->
+        <button>
+          <i class="fas fa-align-left"></i>
+        </button>
+        <button>
+          <i class="fas fa-align-center"></i>
+        </button>
+        <button>
+          <i class="fas fa-align-right"></i>
+        </button>
+        <button>
+          <i class="fas fa-align-justify"></i>
+        </button>
+
+        <!-- Lists -->
+        <button>
+          <i class="fas fa-list-ol"></i>
+        </button>
+        <button>
+          <i class="fas fa-list-ul"></i>
+        </button>
+
+        <!-- Indent/Outdent -->
+        <button>
+          <i class="fas fa-indent"></i>
+        </button>
+        <button>
+          <i class="fas fa-outdent"></i>
+        </button>
+
+        <!-- Insert elements -->
+        <button>
+          <i class="fas fa-link"></i>
+        </button>
+        <button>
+          <i class="fas fa-image"></i>
+        </button>
+        <button>
+          <i class="fas fa-table"></i>
+        </button>
+      </div>
+
+      <div
+        #editableContent
+        contenteditable="true"
+        class="text-editor-content"
+      ></div>
+    </div>
+  </div>
+</div>

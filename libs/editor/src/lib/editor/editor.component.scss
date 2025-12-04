@@ -1,0 +1,64 @@
+:host {
+  height: 100%;
+
+  .text-editor {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+
+    &-textarea {
+      width: 500px;
+      height: 400px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      background: #fafafa;
+      font-family: Arial, sans-serif;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      overflow: hidden;
+    }
+
+    &-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      padding: 6px 8px;
+      background: #f0f0f0;
+      border-bottom: 1px solid #ccc;
+      gap: 6px;
+
+      & button {
+        border: 0;
+        padding: 7px 7px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #757575;
+        transition: background 0.3s, border-color 0.3s;
+
+        &:hover {
+          background: #dcdcdc;
+        }
+
+        & i {
+          font-size: 12px;
+        }
+      }
+    }
+
+    &-content {
+      background: #fff;
+      height: 100%;
+      padding: 10px;
+      font-size: 14px;
+      line-height: 1.5;
+      color: #333;
+      overflow-y: auto;
+
+      &:focus {
+        outline: none;
+      }
+    }
+  }
+}
