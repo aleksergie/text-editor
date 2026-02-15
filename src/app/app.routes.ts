@@ -2,7 +2,7 @@ import { Route } from '@angular/router';
 
 export const appRoutes: Route[] = [
   {
-    path: 'editor',
+    path: '**',
     loadComponent: () => import('@text-editor/editor').then(m => m.EditorComponent),
   },
 ];

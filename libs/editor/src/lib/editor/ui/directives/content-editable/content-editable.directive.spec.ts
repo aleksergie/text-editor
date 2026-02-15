@@ -1,8 +1,8 @@
-import { ContentEditableDirectiveDirective } from './content-editable.directive';
+import { ContentEditableDirective } from './content-editable.directive';
 
-describe('ContentEditableDirectiveDirective', () => {
+describe('ContentEditableDirective', () => {
   it('should create an instance', () => {
-    const directive = new ContentEditableDirectiveDirective();
+    const directive = new ContentEditableDirective();
     expect(directive).toBeTruthy();
   });
 });

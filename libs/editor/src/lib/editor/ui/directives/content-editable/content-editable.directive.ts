@@ -6,12 +6,12 @@ import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
   providers: [
     {
       provide: NG_VALUE_ACCESSOR,
-      useExisting: forwardRef(() => ContentEditableDirectiveDirective),
+      useExisting: forwardRef(() => ContentEditableDirective),
       multi: true,
     },
   ],
 })
-export class ContentEditableDirectiveDirective implements ControlValueAccessor {
+export class ContentEditableDirective implements ControlValueAccessor {
   private readonly elRef: ElementRef = inject(ElementRef);
   private readonly renderer: Renderer2 = inject(Renderer2);
 
