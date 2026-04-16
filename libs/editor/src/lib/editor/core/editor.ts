@@ -30,5 +30,6 @@ export class Editor {
     if (this.root) {
       this.reconciler.update(this.root, prev, next);
     }
+    next.clearDirtyNodeKeys();
   }
 }

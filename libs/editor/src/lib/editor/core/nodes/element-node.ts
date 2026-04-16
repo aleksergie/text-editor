@@ -34,7 +34,7 @@ export class ElementNode extends NodeBase {
   }
 
   override createDOM(): HTMLElement {
-    return document.createElement('p');
+    return document.createElement('div');
   }
 
   override updateDOM(_dom: HTMLElement): boolean {
@@ -49,5 +49,15 @@ export class RootNode extends ElementNode {
 
   override createDOM(): HTMLElement {
     throw new Error('root does not create DOM');
+  }
+}
+
+export class ParagraphNode extends ElementNode {
+  protected override getType(): string {
+    return 'paragraph';
+  }
+
+  override createDOM(): HTMLElement {
+    return document.createElement('p');
   }
 }

@@ -1,4 +1,4 @@
-import { ElementNode, RootNode } from './element-node';
+import { ElementNode, ParagraphNode, RootNode } from './element-node';
 import { NodeBase, NodeKey, NodeMap } from './node';
 import { TextNode } from './text-node';
 
@@ -8,6 +8,10 @@ export function $createRootNode(key: NodeKey): RootNode {
 
 export function $createElementNode(key: NodeKey): ElementNode {
   return new ElementNode(key);
+}
+
+export function $createParagraphNode(key: NodeKey): ParagraphNode {
+  return new ParagraphNode(key);
 }
 
 export function $createTextNode(key: NodeKey, text: string): TextNode {

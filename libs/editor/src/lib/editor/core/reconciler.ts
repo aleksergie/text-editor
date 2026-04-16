@@ -11,23 +11,32 @@ export class Reconciler {
     this.render(rootEl, state);
   }
 
-  update(rootEl: HTMLElement, _prev: EditorState, next: EditorState) {
+  update(rootEl: HTMLElement, prev: EditorState, next: EditorState) {
     const nextOrder = this.getRenderOrder(next);
     if (!this.isSameOrder(this.renderOrder, nextOrder)) {
       this.render(rootEl, next);
       return;
     }
 
-    for (const key of nextOrder) {
-      const node = next.nodes.get(key);
-      if (node) {
-        const dom = this.keyToDom.get(key);
-        if (!dom) {
-          this.render(rootEl, next);
-          return;
-        }
-        node.updateDOM(dom);
+    const dirtyNodeKeys = next.getDirtyNodeKeys();
+    if (dirtyNodeKeys.size === 0) {
+      return;
+    }
+
+    for (const key of dirtyNodeKeys) {
+      const nextNode = next.nodes.get(key);
+      const prevNode = prev.nodes.get(key);
+      if (!nextNode || !prevNode || prevNode.__type !== nextNode.__type) {
+        this.render(rootEl, next);
+        return;
       }
+
+      const dom = this.keyToDom.get(key);
+      if (!dom) {
+        continue;
+      }
+
+      nextNode.updateDOM(dom);
     }
   }
 

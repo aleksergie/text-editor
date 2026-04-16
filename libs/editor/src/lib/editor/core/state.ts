@@ -1,17 +1,18 @@
 import { NodeKey, NodeMap } from './nodes/node';
 import { TextNode } from './nodes/text-node';
-import { $createElementNode, $createRootNode, $createTextNode, $isElementNode, $isTextNode } from './nodes/node-utils';
+import { $createParagraphNode, $createRootNode, $createTextNode, $isElementNode, $isTextNode } from './nodes/node-utils';
 
 export class EditorState {
   constructor(
     public readonly nodes: NodeMap,
     public readonly rootKey: NodeKey,
+    private readonly dirtyNodes: Set<NodeKey> = new Set(),
   ) { }
 
   static createEmpty() {
     const nodes: NodeMap = new Map();
     const root = $createRootNode('root');
-    const paragraph = $createElementNode('p1');
+    const paragraph = $createParagraphNode('p1');
     const text = $createTextNode('t1', 'default text');
 
     nodes.set(root.key, root);
@@ -25,15 +26,29 @@ export class EditorState {
   }
 
   clone() {
-    return new EditorState(new Map(this.nodes), this.rootKey);
+    // Dirty keys are transaction-scoped and should not leak into the next update.
+    return new EditorState(new Map(this.nodes), this.rootKey, new Set());
   }
 
 
   setText(nextText: string) {
     const textNode = this.getFirstTextNode();
-    if (textNode) {
+    if (textNode && textNode.text !== nextText) {
       textNode.text = nextText;
+      this.markDirty(textNode.key);
     }
+  }
+
+  markDirty(nodeKey: NodeKey) {
+    this.dirtyNodes.add(nodeKey);
+  }
+
+  getDirtyNodeKeys(): ReadonlySet<NodeKey> {
+    return this.dirtyNodes;
+  }
+
+  clearDirtyNodeKeys() {
+    this.dirtyNodes.clear();
   }
 
   getText(): string {
