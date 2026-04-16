@@ -1,3 +1,5 @@
+import type { EditorState } from './state';
+
 /**
  * Module-private brand symbol. Declared with `unique symbol` so its type is
  * nominal, and intentionally not exported so no code outside this module can
@@ -61,9 +63,33 @@ export function createCommand<TPayload = void>(type: string): EditorCommand<TPay
   return Object.freeze({ type });
 }
 
+// --- V1 core commands -------------------------------------------------------
+
+/** Insert text at the current (v1 DOM-derived) insertion point. */
+export const INSERT_TEXT: EditorCommand<{ text: string }> =
+  createCommand<{ text: string }>('INSERT_TEXT');
+
+/** Delete one character. `isBackward` mirrors the browser's `deleteContentBackward`. */
+export const DELETE_CHARACTER: EditorCommand<{ isBackward: boolean }> =
+  createCommand<{ isBackward: boolean }>('DELETE_CHARACTER');
+
+/** Insert a new empty paragraph at the end of the document (v1 scope). */
+export const INSERT_PARAGRAPH: EditorCommand<void> =
+  createCommand<void>('INSERT_PARAGRAPH');
+
+/** Replace the document's text content (non-structural). */
+export const SET_TEXT_CONTENT: EditorCommand<string> =
+  createCommand<string>('SET_TEXT_CONTENT');
+
+/** Apply a whole-editor-state snapshot (in-memory state for v1; JSON in M3). */
+export const APPLY_EDITOR_STATE: EditorCommand<EditorState> =
+  createCommand<EditorState>('APPLY_EDITOR_STATE');
+
+/** Reset to the v1 baseline: `root > paragraph > empty text node`. */
+export const CLEAR_EDITOR: EditorCommand<void> = createCommand<void>('CLEAR_EDITOR');
+
 /**
- * Legacy text-replace command preserved for the current input flow.
- *
- * @deprecated Will be replaced by `SET_TEXT_CONTENT` in M1-T5.
+ * @deprecated Use `SET_TEXT_CONTENT` instead. Retained as an alias so existing
+ * input-flow call sites keep working during the M1 migration.
  */
-export const SET_TEXT: EditorCommand<string> = createCommand<string>('SET_TEXT');
+export const SET_TEXT: EditorCommand<string> = SET_TEXT_CONTENT;

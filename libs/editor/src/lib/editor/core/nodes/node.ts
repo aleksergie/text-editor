@@ -2,6 +2,18 @@ export type NodeKey = string;
 
 export type NodeMap = Map<NodeKey, NodeBase>;
 
+let nodeKeyCounter = 0;
+
+/**
+ * Mint a unique NodeKey for runtime-created nodes. Baseline keys
+ * (`root`, `p1`, `t1`) are still hand-assigned by `EditorState.createEmpty`;
+ * everything created by command handlers or imports gets a generated key.
+ */
+export function createNodeKey(): NodeKey {
+  nodeKeyCounter += 1;
+  return `n${nodeKeyCounter}`;
+}
+
 export class NodeBase {
   __type: string;
   __key: NodeKey;
@@ -33,8 +45,14 @@ export class NodeBase {
     return this.__next;
   }
 
-  protected getType(): string {
+  static getType(): string {
     return 'node';
+  }
+
+  static readonly version: number = 1;
+
+  protected getType(): string {
+    return (this.constructor as typeof NodeBase).getType();
   }
 
   createDOM(): HTMLElement {

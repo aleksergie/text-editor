@@ -1,10 +1,17 @@
 import {
+  APPLY_EDITOR_STATE,
+  CLEAR_EDITOR,
   CommandHandler,
   CommandPayloadType,
   CommandPriority,
+  DELETE_CHARACTER,
   EditorCommand,
-  SET_TEXT,
+  INSERT_PARAGRAPH,
+  INSERT_TEXT,
+  SET_TEXT_CONTENT,
 } from './commands';
+import { NodeKey } from './nodes/node';
+import { EditorPluginContext } from './plugin';
 import { Reconciler } from './reconciler';
 import { EditorState } from './state';
 
@@ -13,11 +20,20 @@ interface HandlerEntry {
   priority: CommandPriority;
 }
 
+export interface UpdateListenerPayload {
+  readonly editorState: EditorState;
+  readonly prevEditorState: EditorState;
+  readonly dirtyNodeKeys: ReadonlySet<NodeKey>;
+}
+
+export type UpdateListener = (payload: UpdateListenerPayload) => void;
+
 export class Editor {
   private state = EditorState.createEmpty();
   private reconciler = new Reconciler();
   private root: HTMLElement | null = null;
   private commandHandlers = new Map<EditorCommand<unknown>, HandlerEntry[]>();
+  private updateListeners: UpdateListener[] = [];
 
   constructor() {
     this.registerDefaultHandlers();
@@ -28,6 +44,37 @@ export class Editor {
     if (root) {
       this.reconciler.mount(root, this.state);
     }
+  }
+
+  getEditorState(): EditorState {
+    return this.state;
+  }
+
+  setEditorState(state: EditorState) {
+    const prev = this.state;
+    if (prev === state) {
+      return;
+    }
+    this.state = state;
+    if (this.root) {
+      this.reconciler.update(this.root, prev, state);
+    }
+    this.notifyUpdateListeners(prev, state);
+    state.clearDirtyNodeKeys();
+  }
+
+  read<T>(fn: (state: EditorState) => T): T {
+    return fn(this.state);
+  }
+
+  registerUpdateListener(listener: UpdateListener): () => void {
+    this.updateListeners.push(listener);
+    return () => {
+      const idx = this.updateListeners.indexOf(listener);
+      if (idx >= 0) {
+        this.updateListeners.splice(idx, 1);
+      }
+    };
   }
 
   registerCommand<TCommand extends EditorCommand<unknown>>(
@@ -84,6 +131,22 @@ export class Editor {
     return false;
   }
 
+  /**
+   * Produce a plugin-facing context exposing only documented public APIs.
+   * Methods are bound so plugins can destructure/pass them freely.
+   */
+  getPluginContext(): EditorPluginContext {
+    return {
+      registerCommand: this.registerCommand.bind(this),
+      registerUpdateListener: this.registerUpdateListener.bind(this),
+      dispatchCommand: this.dispatchCommand.bind(this),
+      read: this.read.bind(this),
+      update: this.update.bind(this),
+      getEditorState: this.getEditorState.bind(this),
+      setEditorState: this.setEditorState.bind(this),
+    };
+  }
+
   update(fn: (state: EditorState) => void) {
     const next = this.state.clone();
     fn(next);
@@ -92,16 +155,85 @@ export class Editor {
     if (this.root) {
       this.reconciler.update(this.root, prev, next);
     }
+    this.notifyUpdateListeners(prev, next);
     next.clearDirtyNodeKeys();
   }
 
+  private notifyUpdateListeners(prev: EditorState, next: EditorState) {
+    if (this.updateListeners.length === 0) {
+      return;
+    }
+    // Copy the dirty set so listeners keep a stable view after the transaction
+    // clears it, and so listeners cannot mutate the editor's internal state.
+    const payload: UpdateListenerPayload = {
+      editorState: next,
+      prevEditorState: prev,
+      dirtyNodeKeys: new Set(next.getDirtyNodeKeys()),
+    };
+    // Iterate over a snapshot so listeners registered/removed during
+    // notification don't alter the in-flight iteration.
+    const snapshot = this.updateListeners.slice();
+    for (const listener of snapshot) {
+      listener(payload);
+    }
+  }
+
   private registerDefaultHandlers() {
-    // Bridged onto the bus so existing input flow keeps working. M1-T5 will
-    // replace this with SET_TEXT_CONTENT and the broader v1 command set.
+    // All v1 core defaults register at `CommandPriority.Editor` so plugins
+    // (registered at any higher priority) can intercept and short-circuit them.
+
     this.registerCommand(
-      SET_TEXT,
+      SET_TEXT_CONTENT,
       (payload) => {
         this.update((state) => state.setText(String(payload ?? '')));
+        return true;
+      },
+      CommandPriority.Editor,
+    );
+
+    this.registerCommand(
+      INSERT_TEXT,
+      ({ text }) => {
+        if (!text) {
+          return true;
+        }
+        this.update((state) => state.insertText(text));
+        return true;
+      },
+      CommandPriority.Editor,
+    );
+
+    this.registerCommand(
+      DELETE_CHARACTER,
+      ({ isBackward }) => {
+        this.update((state) => state.deleteCharacter(isBackward));
+        return true;
+      },
+      CommandPriority.Editor,
+    );
+
+    this.registerCommand(
+      INSERT_PARAGRAPH,
+      () => {
+        this.update((state) => state.insertParagraph());
+        return true;
+      },
+      CommandPriority.Editor,
+    );
+
+    this.registerCommand(
+      CLEAR_EDITOR,
+      () => {
+        this.setEditorState(EditorState.createEmpty());
+        return true;
+      },
+      CommandPriority.Editor,
+    );
+
+    this.registerCommand(
+      APPLY_EDITOR_STATE,
+      (state) => {
+        this.setEditorState(state);
         return true;
       },
       CommandPriority.Editor,
