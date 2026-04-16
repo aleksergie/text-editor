@@ -1,6 +1,6 @@
 import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { ContentEditableDirective } from '@text-editor/directives';
+import { ContentEditableDirective } from '../../ui/directives/content-editable/content-editable.directive';
 import { Editor } from '../../core/editor';
 
 @Component({

@@ -1,4 +1,4 @@
-import { SET_TEXT } from './commands';
+import { CommandPayloadType, EditorCommand, SET_TEXT } from './commands';
 import { Reconciler } from './reconciler';
 import { EditorState } from './state';
 
@@ -14,8 +14,11 @@ export class Editor {
     }
   }
 
-  dispatchCommand(type: string, payload: unknown) {
-    if (type === SET_TEXT) {
+  dispatchCommand<TCommand extends EditorCommand<unknown>>(
+    command: TCommand,
+    payload: CommandPayloadType<TCommand>,
+  ): boolean {
+    if (command === SET_TEXT) {
       this.update((state) => state.setText(String(payload ?? '')));
       return true;
     }
