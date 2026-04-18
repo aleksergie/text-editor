@@ -9,11 +9,10 @@ import {
 import { CommonModule } from '@angular/common';
 import { FORMAT_TEXT } from '../../../core/commands';
 import { EditorRuntimeService } from '../../../angular/editor-runtime.service';
-import { TextNode } from '../../../core/nodes/text-node';
-import { $isTextNode } from '../../../core/nodes/node-utils';
 import {
   SelectionResolverHost,
   TextRange,
+  getFormatIntersection,
   resolveDomSelection,
 } from '../../../core/selection';
 import {
@@ -107,45 +106,9 @@ export class FormattingToolbarComponent {
 
   private refreshActiveFlags(): void {
     const range = this.readRange();
-    if (!range || range.isCollapsed) {
-      if (this.activeFlags !== 0) {
-        this.activeFlags = 0;
-        this.cdr.markForCheck();
-      }
-      return;
-    }
-
-    const state = this.runtime.editor.getEditorState();
-    const startNode = state.nodes.get(range.anchor.key);
-    if (!$isTextNode(startNode)) {
-      return;
-    }
-
-    // Approximate active state: intersect the format bitfields of every text
-    // node touched by the range. A flag is "active" only if every character
-    // has it; this matches the toggle semantics so button state reflects
-    // what the next click would flip.
-    let bits = (startNode as TextNode).format;
-    const endKey = range.focus.key;
-    const nodes = state.getTextNodesInDocumentOrder();
-    const startIdx = nodes.indexOf(startNode);
-    let endIdx = nodes.findIndex((n) => n.key === endKey);
-    if (startIdx < 0 || endIdx < 0) {
-      return;
-    }
-    if (endIdx < startIdx) {
-      const tmp = endIdx;
-      endIdx = startIdx;
-      const adjustedStart = tmp;
-      for (let i = adjustedStart; i <= endIdx; i += 1) {
-        bits &= nodes[i].format;
-      }
-    } else {
-      for (let i = startIdx; i <= endIdx; i += 1) {
-        bits &= nodes[i].format;
-      }
-    }
-
+    const bits = range
+      ? getFormatIntersection(this.runtime.editor.getEditorState(), range)
+      : TextFormat.NONE;
     if (bits !== this.activeFlags) {
       this.activeFlags = bits;
       this.cdr.markForCheck();

@@ -1,6 +1,7 @@
 import { NodeKey } from './nodes/node';
 import { $isTextNode } from './nodes/node-utils';
 import { EditorState } from './state';
+import { TextFormat, TextFormatBits } from './text-format';
 
 /**
  * The minimal surface `resolveDomSelection` needs. Both `Editor` and
@@ -197,6 +198,60 @@ function normalizeOffsetWithinTextNode(
     return Math.min(Math.max(domOffset, 0), textLength);
   }
   return Math.min(Math.max(accumulated, 0), textLength);
+}
+
+/**
+ * Intersect the format bitfields of every `TextNode` touched by `range`,
+ * returning the set of flags that are active across the entire range.
+ *
+ * A flag appears in the result only when every `TextNode` in the range
+ * carries it. This matches the toggle semantics of `FORMAT_TEXT`, so a
+ * toolbar can use the return value to decide whether the next click on a
+ * given format button would add or remove that format.
+ *
+ * Returns `TextFormat.NONE` when:
+ * - the range is collapsed (V2 has no caret-level formatting),
+ * - either endpoint resolves to a node that is not a `TextNode` in the
+ *   current state (e.g. stale keys after a structural mutation),
+ * - the endpoints cannot be located in document order.
+ *
+ * Complexity: O(N) in the number of text nodes in the document, bounded by
+ * `state.getTextNodesInDocumentOrder()`. Callers that compute this on every
+ * `selectionchange` tick should be aware; a future version may index text
+ * nodes by key to make this O(range size).
+ */
+export function getFormatIntersection(
+  state: EditorState,
+  range: TextRange,
+): TextFormatBits {
+  if (range.isCollapsed) {
+    return TextFormat.NONE;
+  }
+
+  const { start, end } = getRangeStartEnd(range);
+  const startNode = state.nodes.get(start.key);
+  const endNode = state.nodes.get(end.key);
+  if (!$isTextNode(startNode) || !$isTextNode(endNode)) {
+    return TextFormat.NONE;
+  }
+
+  // Same-node fast path: one lookup, no document walk.
+  if (start.key === end.key) {
+    return startNode.format;
+  }
+
+  const nodes = state.getTextNodesInDocumentOrder();
+  const startIdx = nodes.findIndex((n) => n.key === start.key);
+  const endIdx = nodes.findIndex((n) => n.key === end.key);
+  if (startIdx < 0 || endIdx < 0 || endIdx < startIdx) {
+    return TextFormat.NONE;
+  }
+
+  let bits = nodes[startIdx].format;
+  for (let i = startIdx + 1; i <= endIdx; i += 1) {
+    bits &= nodes[i].format;
+  }
+  return bits;
 }
 
 function isSelectionBackward(

@@ -4,7 +4,12 @@ import {
   $createTextNode,
   $isElementNode,
 } from './nodes/node-utils';
-import { resolveDomSelection } from './selection';
+import {
+  createTextRange,
+  getFormatIntersection,
+  resolveDomSelection,
+} from './selection';
+import { EditorState } from './state';
 import { TextFormat } from './text-format';
 
 /**
@@ -256,5 +261,136 @@ describe('Editor.keyForDomNode', () => {
     const stray = document.createElement('div');
     expect(editor.keyForDomNode(stray)).toBeNull();
     expect(editor.keyForDomNode(null)).toBeNull();
+  });
+});
+
+describe('getFormatIntersection', () => {
+  /**
+   * Seed a single-paragraph state with `runs` as sequential text nodes, each
+   * with its own format bits. Returns the state for direct querying; tests
+   * construct `TextRange`s via `createTextRange` so we don't depend on DOM
+   * selection resolution here.
+   */
+  function seedSingleParagraph(
+    runs: readonly { key: string; text: string; format: number }[],
+  ): EditorState {
+    const editor = new Editor();
+    editor.update((state) => {
+      const first = state.getTextNodesInDocumentOrder()[0];
+      first.text = runs[0].text;
+      first.setFormat(runs[0].format);
+      state.markDirty(first.key);
+
+      const paragraph = state.nodes.get(first.parent ?? '');
+      if (!$isElementNode(paragraph)) {
+        throw new Error('unexpected root shape');
+      }
+      for (let i = 1; i < runs.length; i += 1) {
+        const run = runs[i];
+        const node = $createTextNode(run.key, run.text, run.format);
+        state.registerNode(node);
+        paragraph.append(state.nodes, node);
+      }
+      state.markDirty(paragraph.key);
+    });
+    return editor.getEditorState();
+  }
+
+  it('returns NONE for a collapsed range', () => {
+    const state = seedSingleParagraph([
+      { key: 't1', text: 'hello', format: TextFormat.BOLD },
+    ]);
+    const range = createTextRange(
+      { key: 't1', offset: 2 },
+      { key: 't1', offset: 2 },
+      false,
+    );
+    expect(getFormatIntersection(state, range)).toBe(TextFormat.NONE);
+  });
+
+  it('returns the node format when the range stays inside one text node', () => {
+    const state = seedSingleParagraph([
+      { key: 't1', text: 'hello', format: TextFormat.BOLD | TextFormat.ITALIC },
+    ]);
+    const range = createTextRange(
+      { key: 't1', offset: 0 },
+      { key: 't1', offset: 5 },
+      false,
+    );
+    expect(getFormatIntersection(state, range)).toBe(
+      TextFormat.BOLD | TextFormat.ITALIC,
+    );
+  });
+
+  it('ANDs format bits across multiple covered nodes', () => {
+    const state = seedSingleParagraph([
+      { key: 't1', text: 'a', format: TextFormat.BOLD | TextFormat.ITALIC },
+      { key: 't2', text: 'b', format: TextFormat.BOLD | TextFormat.UNDERLINE },
+      { key: 't3', text: 'c', format: TextFormat.BOLD },
+    ]);
+    const range = createTextRange(
+      { key: 't1', offset: 0 },
+      { key: 't3', offset: 1 },
+      false,
+    );
+    // Only BOLD is present in every node.
+    expect(getFormatIntersection(state, range)).toBe(TextFormat.BOLD);
+  });
+
+  it('returns NONE when no format is shared across every covered node', () => {
+    const state = seedSingleParagraph([
+      { key: 't1', text: 'a', format: TextFormat.BOLD },
+      { key: 't2', text: 'b', format: TextFormat.ITALIC },
+    ]);
+    const range = createTextRange(
+      { key: 't1', offset: 0 },
+      { key: 't2', offset: 1 },
+      false,
+    );
+    expect(getFormatIntersection(state, range)).toBe(TextFormat.NONE);
+  });
+
+  it('ignores direction: backward ranges yield the same intersection', () => {
+    const state = seedSingleParagraph([
+      { key: 't1', text: 'a', format: TextFormat.BOLD | TextFormat.ITALIC },
+      { key: 't2', text: 'b', format: TextFormat.BOLD },
+    ]);
+    const forward = createTextRange(
+      { key: 't1', offset: 0 },
+      { key: 't2', offset: 1 },
+      false,
+    );
+    const backward = createTextRange(
+      { key: 't2', offset: 1 },
+      { key: 't1', offset: 0 },
+      true,
+    );
+    expect(getFormatIntersection(state, forward)).toBe(TextFormat.BOLD);
+    expect(getFormatIntersection(state, backward)).toBe(TextFormat.BOLD);
+  });
+
+  it('returns NONE when a range endpoint references a non-existent key', () => {
+    const state = seedSingleParagraph([
+      { key: 't1', text: 'hello', format: TextFormat.BOLD },
+    ]);
+    const range = createTextRange(
+      { key: 't1', offset: 0 },
+      { key: 'nope', offset: 1 },
+      false,
+    );
+    expect(getFormatIntersection(state, range)).toBe(TextFormat.NONE);
+  });
+
+  it('returns NONE when an endpoint points to a non-text node', () => {
+    const state = seedSingleParagraph([
+      { key: 't1', text: 'hello', format: TextFormat.BOLD },
+    ]);
+    // The paragraph exists but it is not a TextNode, so the helper bails.
+    const range = createTextRange(
+      { key: 't1', offset: 0 },
+      { key: 'p1', offset: 0 },
+      false,
+    );
+    expect(getFormatIntersection(state, range)).toBe(TextFormat.NONE);
   });
 });

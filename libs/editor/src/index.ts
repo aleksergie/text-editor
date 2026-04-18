@@ -30,6 +30,7 @@ export type {
 
 export {
   createTextRange,
+  getFormatIntersection,
   getRangeStartEnd,
   resolveDomSelection,
 } from './lib/editor/core/selection';
