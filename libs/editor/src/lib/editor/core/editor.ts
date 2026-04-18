@@ -6,6 +6,7 @@ import {
   CommandPriority,
   DELETE_CHARACTER,
   EditorCommand,
+  FORMAT_TEXT,
   INSERT_PARAGRAPH,
   INSERT_TEXT,
   SET_TEXT_CONTENT,
@@ -28,22 +29,65 @@ export interface UpdateListenerPayload {
 
 export type UpdateListener = (payload: UpdateListenerPayload) => void;
 
+/**
+ * Callback fired when the editor's mounted DOM root changes. Fires once on
+ * initial subscription with the current root (or `null` if unmounted), and
+ * again on every subsequent `setRoot`. Plugins use this hook to attach
+ * native DOM listeners (keyboard shortcuts, etc.) without reaching into
+ * the contenteditable directive.
+ */
+export type RootElementListener = (root: HTMLElement | null) => void;
+
 export class Editor {
   private state = EditorState.createEmpty();
   private reconciler = new Reconciler();
   private root: HTMLElement | null = null;
   private commandHandlers = new Map<EditorCommand<unknown>, HandlerEntry[]>();
   private updateListeners: UpdateListener[] = [];
+  private rootListeners: RootElementListener[] = [];
 
   constructor() {
     this.registerDefaultHandlers();
   }
 
   setRoot(root: HTMLElement | null) {
+    if (this.root === root) {
+      return;
+    }
     this.root = root;
     if (root) {
       this.reconciler.mount(root, this.state);
     }
+    this.notifyRootListeners(root);
+  }
+
+  /**
+   * Subscribe to root-element attach/detach events. The listener is invoked
+   * immediately with the current root so plugins don't need to special-case
+   * the first call. Returns an unsubscribe function.
+   */
+  registerRootElementListener(listener: RootElementListener): () => void {
+    this.rootListeners.push(listener);
+    // Notify synchronously with current state so plugins can set up immediately.
+    listener(this.root);
+    return () => {
+      const idx = this.rootListeners.indexOf(listener);
+      if (idx >= 0) {
+        this.rootListeners.splice(idx, 1);
+      }
+    };
+  }
+
+  /**
+   * DOM lookup helpers exposed for the selection bridge. They forward to the
+   * reconciler without leaking the reconciler itself to consumers.
+   */
+  keyForDomNode(node: Node | null): NodeKey | null {
+    return this.reconciler.keyForDomNode(node);
+  }
+
+  getDomForKey(key: NodeKey): HTMLElement | null {
+    return this.reconciler.getDom(key);
   }
 
   getEditorState(): EditorState {
@@ -139,11 +183,14 @@ export class Editor {
     return {
       registerCommand: this.registerCommand.bind(this),
       registerUpdateListener: this.registerUpdateListener.bind(this),
+      registerRootElementListener: this.registerRootElementListener.bind(this),
       dispatchCommand: this.dispatchCommand.bind(this),
       read: this.read.bind(this),
       update: this.update.bind(this),
       getEditorState: this.getEditorState.bind(this),
       setEditorState: this.setEditorState.bind(this),
+      keyForDomNode: this.keyForDomNode.bind(this),
+      getDomForKey: this.getDomForKey.bind(this),
     };
   }
 
@@ -157,6 +204,16 @@ export class Editor {
     }
     this.notifyUpdateListeners(prev, next);
     next.clearDirtyNodeKeys();
+  }
+
+  private notifyRootListeners(root: HTMLElement | null) {
+    if (this.rootListeners.length === 0) {
+      return;
+    }
+    const snapshot = this.rootListeners.slice();
+    for (const listener of snapshot) {
+      listener(root);
+    }
   }
 
   private notifyUpdateListeners(prev: EditorState, next: EditorState) {
@@ -234,6 +291,15 @@ export class Editor {
       APPLY_EDITOR_STATE,
       (state) => {
         this.setEditorState(state);
+        return true;
+      },
+      CommandPriority.Editor,
+    );
+
+    this.registerCommand(
+      FORMAT_TEXT,
+      ({ format, range }) => {
+        this.update((state) => state.applyFormatToRange(range, format));
         return true;
       },
       CommandPriority.Editor,

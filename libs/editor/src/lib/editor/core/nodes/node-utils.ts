@@ -14,8 +14,12 @@ export function $createParagraphNode(key: NodeKey): ParagraphNode {
   return new ParagraphNode(key);
 }
 
-export function $createTextNode(key: NodeKey, text: string): TextNode {
-  return new TextNode(key, text);
+export function $createTextNode(
+  key: NodeKey,
+  text: string,
+  format = 0,
+): TextNode {
+  return new TextNode(key, text, format);
 }
 
 export function $isRootNode(node: NodeBase | null | undefined): node is RootNode {

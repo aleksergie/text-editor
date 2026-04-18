@@ -4,7 +4,8 @@ import {
   CommandPriority,
   EditorCommand,
 } from './commands';
-import { UpdateListener } from './editor';
+import { RootElementListener, UpdateListener } from './editor';
+import { NodeKey } from './nodes/node';
 import { EditorState } from './state';
 
 /**
@@ -19,21 +20,24 @@ export interface EditorPluginContext {
     handler: CommandHandler<CommandPayloadType<TCommand>>,
     priority: CommandPriority,
   ): () => void;
-
   registerUpdateListener(listener: UpdateListener): () => void;
-
+  registerRootElementListener(listener: RootElementListener): () => void;
   dispatchCommand<TCommand extends EditorCommand<unknown>>(
     command: TCommand,
     payload: CommandPayloadType<TCommand>,
   ): boolean;
-
   read<T>(fn: (state: EditorState) => T): T;
-
   update(fn: (state: EditorState) => void): void;
-
   getEditorState(): EditorState;
-
   setEditorState(state: EditorState): void;
+  /**
+   * DOM <-> model lookup helpers. `keyForDomNode` returns the NodeKey of the
+   * nearest model-mapped ancestor of `node` (walking up through formatting
+   * wrappers), and `getDomForKey` returns the currently rendered host element
+   * for a NodeKey, or `null` if it is not mounted.
+   */
+  keyForDomNode(node: Node | null): NodeKey | null;
+  getDomForKey(key: NodeKey): HTMLElement | null;
 }
 
 /**

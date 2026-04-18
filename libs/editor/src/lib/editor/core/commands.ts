@@ -1,4 +1,6 @@
+import type { TextRange } from './selection';
 import type { EditorState } from './state';
+import type { TextFormatFlag } from './text-format';
 
 /**
  * Module-private brand symbol. Declared with `unique symbol` so its type is
@@ -87,6 +89,18 @@ export const APPLY_EDITOR_STATE: EditorCommand<EditorState> =
 
 /** Reset to the v1 baseline: `root > paragraph > empty text node`. */
 export const CLEAR_EDITOR: EditorCommand<void> = createCommand<void>('CLEAR_EDITOR');
+
+// --- V2 rich text formatting -----------------------------------------------
+
+/**
+ * Toggle an inline formatting bit on every character covered by `range`.
+ * The default handler splits text runs at range boundaries, applies or
+ * removes the bit across the covered runs (Lexical-style "all on -> off,
+ * otherwise -> on"), and merges adjacent same-format runs afterwards.
+ * Collapsed ranges are a no-op in V2.
+ */
+export const FORMAT_TEXT: EditorCommand<{ format: TextFormatFlag; range: TextRange }> =
+  createCommand<{ format: TextFormatFlag; range: TextRange }>('FORMAT_TEXT');
 
 /**
  * @deprecated Use `SET_TEXT_CONTENT` instead. Retained as an alias so existing

@@ -1,0 +1,37 @@
+.lib-formatting-toolbar {
+  display: inline-flex;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid var(--lib-formatting-toolbar-border, #e5e7eb);
+  border-radius: 6px;
+  background: var(--lib-formatting-toolbar-bg, #f9fafb);
+}
+
+.lib-formatting-toolbar__btn {
+  min-width: 32px;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  color: inherit;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.lib-formatting-toolbar__btn:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.lib-formatting-toolbar__btn:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 1px;
+}
+
+.lib-formatting-toolbar__btn--active {
+  background: rgba(37, 99, 235, 0.12);
+  border-color: rgba(37, 99, 235, 0.4);
+}

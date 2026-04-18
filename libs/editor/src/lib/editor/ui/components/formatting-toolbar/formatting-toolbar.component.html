@@ -1,0 +1,15 @@
+<div class="lib-formatting-toolbar" role="toolbar" aria-label="Text formatting">
+  @for (button of buttons; track button.flag) {
+    <button
+      type="button"
+      class="lib-formatting-toolbar__btn"
+      [class.lib-formatting-toolbar__btn--active]="isActive(button.flag)"
+      [attr.aria-label]="button.label"
+      [attr.aria-pressed]="isActive(button.flag)"
+      [title]="button.label + ' (' + button.hint + ')'"
+      (mousedown)="toggle(button.flag, $event)"
+    >
+      {{ button.glyph }}
+    </button>
+  }
+</div>

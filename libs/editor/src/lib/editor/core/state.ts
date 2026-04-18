@@ -11,6 +11,7 @@ import {
   remove as removeUtil,
   replace as replaceUtil,
 } from './nodes/node-utils';
+import { TextRange, getRangeStartEnd } from './selection';
 import {
   EditorStateSnapshot,
   InvalidSnapshotError,
@@ -18,6 +19,13 @@ import {
   SerializedNode,
   validateSnapshot,
 } from './snapshot';
+import {
+  TextFormatBits,
+  TextFormatFlag,
+  applyFormat,
+  hasFormat,
+  removeFormat,
+} from './text-format';
 
 export class EditorState {
   constructor(
@@ -244,6 +252,198 @@ export class EditorState {
     if ($isElementNode(root)) {
       root.append(this.nodes, paragraph);
       this.markDirty(this.rootKey);
+    }
+  }
+
+  /**
+   * Toggle an inline format bit on every character covered by `range`.
+   *
+   * Strategy:
+   * 1. Skip collapsed ranges entirely (V2 does not support pending/caret
+   *    format; toggling Bold with no selection is a no-op).
+   * 2. Split the start and end text nodes at the range boundaries so the
+   *    range aligns to whole text nodes.
+   * 3. Collect the aligned text nodes in document order. They may span
+   *    multiple paragraphs; paragraphs themselves are not split or merged.
+   * 4. Decide intent: if every aligned node already has `flag`, remove it
+   *    from all; otherwise apply it to all.
+   * 5. Merge adjacent same-format siblings so the node graph stays compact.
+   */
+  applyFormatToRange(range: TextRange, flag: TextFormatFlag): void {
+    if (range.isCollapsed || flag === 0) {
+      return;
+    }
+    const { start, end } = getRangeStartEnd(range);
+
+    const startNode = this.nodes.get(start.key);
+    const endNode = this.nodes.get(end.key);
+    if (!$isTextNode(startNode) || !$isTextNode(endNode)) {
+      return;
+    }
+
+    let alignedStart: TextNode | null;
+    let alignedEnd: TextNode | null;
+
+    if (startNode === endNode) {
+      // Same node: split off the tail first (so start-side indices survive),
+      // then split at the start offset. The "middle" is the aligned range.
+      const { right: tail } = this.splitTextNodeAt(startNode, end.offset);
+      const { right: middle } = this.splitTextNodeAt(startNode, start.offset);
+      void tail;
+      alignedStart = middle ?? startNode;
+      alignedEnd = alignedStart;
+    } else {
+      const startSplit = this.splitTextNodeAt(startNode, start.offset);
+      alignedStart = startSplit.right;
+      if (!alignedStart) {
+        alignedStart = this.nextTextNodeInDocument(startNode);
+      }
+
+      const endSplit = this.splitTextNodeAt(endNode, end.offset);
+      alignedEnd = endSplit.left;
+      if (!alignedEnd) {
+        alignedEnd = this.previousTextNodeInDocument(endNode);
+      }
+    }
+
+    if (!alignedStart || !alignedEnd) {
+      return;
+    }
+
+    const covered = this.collectTextNodesBetween(alignedStart, alignedEnd);
+    if (covered.length === 0) {
+      return;
+    }
+
+    const everyHasFormat = covered.every((node) => hasFormat(node.format, flag));
+    const mutator: (bits: TextFormatBits) => TextFormatBits = everyHasFormat
+      ? (bits) => removeFormat(bits, flag)
+      : (bits) => applyFormat(bits, flag);
+
+    for (const node of covered) {
+      const nextFormat = mutator(node.format);
+      if (nextFormat !== node.format) {
+        node.format = nextFormat;
+        this.markDirty(node.key);
+      }
+    }
+
+    this.mergeAdjacentSameFormatRuns(covered);
+  }
+
+  /**
+   * Split `node` at character offset `offset` into a left and right text
+   * node. The original node keeps its key and becomes the left half; a new
+   * runtime-keyed text node is inserted after it and receives the right half.
+   * Both halves inherit the original format bitfield.
+   *
+   * No mutation happens at the endpoints: `offset === 0` returns
+   * `{ left: null, right: node }` and `offset === node.text.length` returns
+   * `{ left: node, right: null }`.
+   */
+  splitTextNodeAt(
+    node: TextNode,
+    offset: number,
+  ): { left: TextNode | null; right: TextNode | null } {
+    if (offset <= 0) {
+      return { left: null, right: node };
+    }
+    if (offset >= node.text.length) {
+      return { left: node, right: null };
+    }
+
+    const rightText = node.text.slice(offset);
+    const leftText = node.text.slice(0, offset);
+
+    const rightNode = $createTextNode(createNodeKey(), rightText, node.format);
+    this.insertAfter(node, rightNode);
+
+    node.text = leftText;
+    this.markDirty(node.key);
+
+    return { left: node, right: rightNode };
+  }
+
+  /**
+   * Enumerate all text nodes in the document in order. Used by range
+   * operations that may span across paragraphs.
+   */
+  getTextNodesInDocumentOrder(): TextNode[] {
+    return this.getTextNodes();
+  }
+
+  private nextTextNodeInDocument(node: TextNode): TextNode | null {
+    const all = this.getTextNodes();
+    const idx = all.indexOf(node);
+    return idx >= 0 && idx + 1 < all.length ? all[idx + 1] : null;
+  }
+
+  private previousTextNodeInDocument(node: TextNode): TextNode | null {
+    const all = this.getTextNodes();
+    const idx = all.indexOf(node);
+    return idx > 0 ? all[idx - 1] : null;
+  }
+
+  private collectTextNodesBetween(startNode: TextNode, endNode: TextNode): TextNode[] {
+    if (startNode === endNode) {
+      return [startNode];
+    }
+    const all = this.getTextNodes();
+    const startIdx = all.indexOf(startNode);
+    const endIdx = all.indexOf(endNode);
+    if (startIdx < 0 || endIdx < 0 || endIdx < startIdx) {
+      return [];
+    }
+    return all.slice(startIdx, endIdx + 1);
+  }
+
+  /**
+   * Walk the text nodes just mutated by a formatting operation and merge
+   * any pair of adjacent same-parent siblings that ended up with identical
+   * format bitfields. Merging preserves the left node's key (so any caret
+   * tracking that key stays intact) and removes the right.
+   *
+   * We extend the scan by one neighbor on each side so we can also merge
+   * the new left-aligned run with its predecessor (which may have matched
+   * beforehand but is now part of a newly contiguous run).
+   */
+  private mergeAdjacentSameFormatRuns(covered: TextNode[]) {
+    if (covered.length === 0) {
+      return;
+    }
+
+    const first = covered[0];
+    const last = covered[covered.length - 1];
+
+    const predecessor = this.previousTextNodeInDocument(first);
+    const successor = this.nextTextNodeInDocument(last);
+
+    const candidates: TextNode[] = [];
+    if (predecessor) {
+      candidates.push(predecessor);
+    }
+    candidates.push(...covered);
+    if (successor) {
+      candidates.push(successor);
+    }
+
+    for (let i = 0; i < candidates.length - 1; i += 1) {
+      const left = candidates[i];
+      const right = candidates[i + 1];
+      // Skip entries that may have been removed by an earlier merge in this pass.
+      if (!this.nodes.has(left.key) || !this.nodes.has(right.key)) {
+        continue;
+      }
+      if (
+        left.parent === right.parent &&
+        left.format === right.format &&
+        left.next === right.key
+      ) {
+        left.text = left.text + right.text;
+        this.markDirty(left.key);
+        this.remove(right);
+        candidates[i + 1] = left;
+      }
     }
   }
 

@@ -85,3 +85,4 @@ Related execution backlog: `docs/angular-lexical-editor-milestones.md`
 - Selection source is DOM-first in v1; model-level selection is postponed until command/edit features require it.
 - State update model remains mutable draft + transaction-scoped dirty tracking.
 - Canonical interchange is Lexical-style JSON, with plain-text import/export included in v1 and HTML import/export deferred.
+

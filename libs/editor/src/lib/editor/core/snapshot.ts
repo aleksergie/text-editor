@@ -34,6 +34,11 @@ export interface SerializedParagraphNode extends SerializedBaseNode<'paragraph'>
 
 export interface SerializedTextNode extends SerializedBaseNode<'text'> {
   text: string;
+  /**
+   * Inline format bitfield. Added in TextNode v2. Absent on v1 snapshots; the
+   * importer defaults missing values to 0 so older snapshots round-trip.
+   */
+  format?: number;
 }
 
 export type SerializedNode =
@@ -135,6 +140,17 @@ function validateNodeRecord(key: string, record: unknown): void {
       const asText = node as Partial<SerializedTextNode>;
       if (typeof asText.text !== 'string') {
         throw new InvalidSnapshotError(`text "${key}" is missing text payload`);
+      }
+      if (asText.format !== undefined) {
+        if (
+          typeof asText.format !== 'number' ||
+          !Number.isInteger(asText.format) ||
+          asText.format < 0
+        ) {
+          throw new InvalidSnapshotError(
+            `text "${key}" has malformed format: ${String(asText.format)}`,
+          );
+        }
       }
       break;
     }
