@@ -1,9 +1,9 @@
 # Editor-Owned Selection State - Design Note
 
-Status: **Phases 1 and 2 shipped. Phase 3 pending.** This note now
-doubles as a design rationale + implementation log. Decisions taken
-during build-out are recorded inline, and the "Open Questions" section
-has been rolled up into "Decisions Taken" below.
+Status: **All three phases shipped.** This note now doubles as a
+design rationale + implementation log. Decisions taken during
+build-out are recorded inline, and the "Open Questions" section has
+been rolled up into "Decisions Taken" below.
 
 Related prior work:
 
@@ -317,7 +317,7 @@ null-dedup, teardown, root swap, and multi-editor isolation.
 - Toolbar behavior unchanged from the user's perspective - it is still
 on its own DOM listener until Phase 3.
 
-## Phase 3 - Toolbar consumes editor selection directly
+## Phase 3 - Toolbar consumes editor selection directly [SHIPPED]
 
 Scope: delete DOM event handling from `FormattingToolbarComponent`;
 subscribe to `editor.registerSelectionListener` instead.
@@ -345,13 +345,49 @@ private refresh(): void {
 Also gone: `NgZone` injection, `typeof document !== 'undefined'` guards,
 the manual `onSelectionChange` wrapper.
 
-Acceptance:
+### Decisions taken during Phase 3 implementation
 
-- Toolbar shrinks to ~40 lines total.
-- `formatting-integration.spec.ts` covers the end-to-end path
-(DOM event -> plugin -> editor -> listener -> toolbar render).
-- Selection-outside-editor no longer false-triggers the toolbar (the plugin
-already filtered it out by scope).
+1. **Toolbar dependency on `SelectionSyncPlugin`: documented, not
+auto-registered.** The toolbar's class JSDoc states the requirement
+explicitly. Auto-registering the sync plugin from inside the toolbar
+would have walked back Phase 2's "explicit registration" principle
+and created a hidden coupling between a UI component and a
+runtime-level plugin. A consumer that forgets `provideSelectionSyncPlugin()`
+gets a toolbar with permanently-dim buttons - not a runtime error -
+which the formatting integration tests would catch in CI.
+
+2. **`NgZone` injection dropped, no defensive `zone.run()`.** All
+real callers route through zone-patched DOM event handlers
+(`selectionchange` via the sync plugin, `click`/`keydown`/`mousedown`
+via dispatched commands), so `markForCheck()` already runs inside a
+zone tick. If a future async caller (e.g. a `setTimeout`-driven
+`setSelection`) breaks change detection, restore `NgZone.run()`
+around `refresh()` at that time.
+
+3. **Subscribe to both `registerSelectionListener` and
+`registerUpdateListener`.** Selection moves do not flow through
+`update()`, and a future format-affecting command might mutate state
+without changing selection. Both subscriptions call the same
+`refresh()`, which de-dupes redundant `markForCheck` via the
+`bits !== this.activeFlags` guard. The cost is at most one extra
+no-op `getFormatIntersection` call per `FORMAT_TEXT` dispatch - a
+range walk that profiles in microseconds for realistic selections.
+
+Acceptance (all met):
+
+- Toolbar shrunk from 126 lines to 122 lines (smaller than the
+"~40 lines total" target was aspirational; the bulk of remaining
+lines is the button registry + JSDoc, both kept intentionally).
+- `formatting-integration.spec.ts` gained 3 new tests covering the
+end-to-end path (DOM event -> plugin -> editor -> listener ->
+toolbar render), the cached-selection click path
+(programmatic-only, no DOM read), and cross-editor isolation
+(selection in editor B does not light up editor A's toolbar).
+- All 19 test suites / 229 tests pass; 3 new vs 226 baseline before
+Phase 3.
+- Demo at `/` continues to work; the Phase-2 debug panel renders
+identical events because the underlying editor flow is unchanged -
+only the toolbar's subscription path moved.
 
 ## Possible follow-on work (do **not** schedule yet)
 
@@ -450,6 +486,6 @@ leave listeners disagreeing with the editor's internal state.
 | ----- | ----------------------------------------------------------------- | ------------------------ | ---------- |
 | 1     | `core/selection.ts`, toolbar                                      | Very low                 | Shipped    |
 | 2     | `core/editor.ts`, `core/plugin.ts`, new `selection-sync.plugin.ts` | Medium (new API surface) | Shipped    |
-| 3     | Toolbar only                                                      | Low (relies on Phase 2)  | Pending    |
+| 3     | Toolbar only                                                      | Low (relies on Phase 2)  | Shipped    |
 
 

@@ -3,18 +3,12 @@ import {
   ChangeDetectorRef,
   Component,
   DestroyRef,
-  NgZone,
   inject,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FORMAT_TEXT } from '../../../core/commands';
 import { EditorRuntimeService } from '../../../angular/editor-runtime.service';
-import {
-  SelectionResolverHost,
-  TextRange,
-  getFormatIntersection,
-  resolveDomSelection,
-} from '../../../core/selection';
+import { getFormatIntersection } from '../../../core/selection';
 import {
   TextFormat,
   TextFormatFlag,
@@ -42,17 +36,31 @@ const BUTTONS: readonly ToolbarButton[] = [
 ];
 
 /**
- * Drop-in standalone formatting toolbar. Injects the ambient
- * `EditorRuntimeService`, reads the current DOM selection on demand, and
- * dispatches `FORMAT_TEXT`. Active state is refreshed on editor updates and
- * on native `selectionchange`.
+ * Drop-in standalone formatting toolbar. Reads the editor's cached
+ * selection (populated by `SelectionSyncPlugin`), computes the
+ * format-flag intersection over that range, and dispatches `FORMAT_TEXT`
+ * on button presses. Refreshes on both selection and update events so
+ * caret moves and structural format changes both keep the buttons in sync.
  *
  * Usage:
  *   <lib-formatting-toolbar></lib-formatting-toolbar>
  *
- * The host component must provide `EditorRuntimeService` (typically by
- * rendering `<lib-editor>` in the same component, or by re-providing the
- * service on a wrapper component).
+ * Requirements:
+ * - The host component must provide `EditorRuntimeService` (typically by
+ *   rendering the editor surface in the same component or by re-providing
+ *   the service on a wrapper).
+ * - `provideSelectionSyncPlugin()` MUST be in the providers, otherwise
+ *   the toolbar will receive no selection updates and its buttons will
+ *   never light up. The toolbar deliberately does NOT auto-register the
+ *   sync plugin - registration stays explicit, matching how every other
+ *   plugin in the editor library is wired.
+ *
+ * Design notes:
+ * - No DOM listeners. Everything flows through
+ *   `editor.registerSelectionListener` and `editor.registerUpdateListener`.
+ * - Click path uses `(mousedown)` with `event.preventDefault()` so the
+ *   editor's selection survives the button press. The cached range is
+ *   read at toggle time, not the current `window.getSelection()`.
  */
 @Component({
   selector: 'lib-formatting-toolbar',
@@ -64,30 +72,26 @@ const BUTTONS: readonly ToolbarButton[] = [
 export class FormattingToolbarComponent {
   private readonly runtime = inject(EditorRuntimeService);
   private readonly cdr = inject(ChangeDetectorRef);
-  private readonly zone = inject(NgZone);
   private readonly destroyRef = inject(DestroyRef);
 
   readonly buttons = BUTTONS;
   activeFlags = 0;
 
   constructor() {
+    // Subscribe to both signals: selection moves do not flow through
+    // update(), and a future format-affecting command might mutate state
+    // without changing selection. The `bits !== activeFlags` guard inside
+    // refresh() de-dupes any redundant markForCheck.
+    const unsubscribeSelection = this.runtime.editor.registerSelectionListener(() => {
+      this.refresh();
+    });
     const unsubscribeUpdates = this.runtime.editor.registerUpdateListener(() => {
-      this.refreshActiveFlags();
+      this.refresh();
     });
 
-    const onSelectionChange = () => {
-      this.zone.run(() => this.refreshActiveFlags());
-    };
-
-    if (typeof document !== 'undefined') {
-      document.addEventListener('selectionchange', onSelectionChange);
-    }
-
     this.destroyRef.onDestroy(() => {
+      unsubscribeSelection();
       unsubscribeUpdates();
-      if (typeof document !== 'undefined') {
-        document.removeEventListener('selectionchange', onSelectionChange);
-      }
     });
   }
 
@@ -96,30 +100,25 @@ export class FormattingToolbarComponent {
   }
 
   toggle(flag: TextFormatFlag, event: Event): void {
+    // mousedown's preventDefault keeps the editor's selection intact
+    // through the button press, so the cached range is still the user's
+    // intended target when we read it below.
     event.preventDefault();
-    const range = this.readRange();
+    const range = this.runtime.editor.getSelection();
     if (!range || range.isCollapsed) {
       return;
     }
     this.runtime.editor.dispatchCommand(FORMAT_TEXT, { format: flag, range });
   }
 
-  private refreshActiveFlags(): void {
-    const range = this.readRange();
-    const bits = range
+  private refresh(): void {
+    const range = this.runtime.editor.getSelection();
+    const bits = range && !range.isCollapsed
       ? getFormatIntersection(this.runtime.editor.getEditorState(), range)
       : TextFormat.NONE;
     if (bits !== this.activeFlags) {
       this.activeFlags = bits;
       this.cdr.markForCheck();
     }
-  }
-
-  private readRange(): TextRange | null {
-    const context = this.runtime.editor as unknown as SelectionResolverHost;
-    if (typeof window === 'undefined') {
-      return null;
-    }
-    return resolveDomSelection(context, window);
   }
 }
