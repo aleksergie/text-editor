@@ -42,6 +42,54 @@ export interface TextRange {
 }
 
 /**
+ * Origin of a selection change. Useful for distinguishing user-driven caret
+ * moves from programmatic replays (e.g. a FORMAT_TEXT command that does not
+ * itself move the caret) and for future "scroll into view on user moves
+ * only" style patterns.
+ *
+ * Conventions:
+ * - `'user'`: the change came from a direct user gesture routed through
+ *   `SelectionSyncPlugin` (native `selectionchange`).
+ * - `'programmatic'`: any other caller, including the editor itself when it
+ *   invalidates stale selections after structural mutations.
+ */
+export type SelectionSource = 'user' | 'programmatic';
+
+/**
+ * Subscriber signature for `Editor.registerSelectionListener`. Receives the
+ * new range (or `null` if selection was cleared) and the source tag.
+ */
+export type SelectionListener = (
+  range: TextRange | null,
+  source: SelectionSource,
+) => void;
+
+/**
+ * Structural equality for `TextRange` (and the `null` case). Used by
+ * `Editor.setSelection` to skip no-op notifications - `selectionchange`
+ * fires frequently during drag, so de-duping at the cache layer keeps
+ * listeners cheap.
+ */
+export function rangesEqual(
+  a: TextRange | null,
+  b: TextRange | null,
+): boolean {
+  if (a === b) {
+    return true;
+  }
+  if (!a || !b) {
+    return false;
+  }
+  return (
+    a.anchor.key === b.anchor.key &&
+    a.anchor.offset === b.anchor.offset &&
+    a.focus.key === b.focus.key &&
+    a.focus.offset === b.focus.offset &&
+    a.isBackward === b.isBackward
+  );
+}
+
+/**
  * Build a normalized range from anchor/focus points. If the caller passed
  * them in backward order we flip to forward order and set `isBackward` so
  * handlers can iterate left-to-right without ambiguity. Callers that already

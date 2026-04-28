@@ -1,8 +1,9 @@
 # Editor-Owned Selection State - Design Note
 
-Status: **Draft / Under Review** - not yet scheduled. Review, edit, and
-extend this note freely. Implementation kicks off once the outstanding items
-in "Open Questions" are closed.
+Status: **Phases 1 and 2 shipped. Phase 3 pending.** This note now
+doubles as a design rationale + implementation log. Decisions taken
+during build-out are recorded inline, and the "Open Questions" section
+has been rolled up into "Decisions Taken" below.
 
 Related prior work:
 
@@ -86,7 +87,7 @@ the sync plugin.
 - Headless `new Editor()` consumers (tests, non-Angular hosts) can either
 opt in to the sync plugin or call `editor.setSelection` manually.
 
-## Phase 1 - Extract `getFormatIntersection` helper
+## Phase 1 - Extract `getFormatIntersection` helper [SHIPPED]
 
 Scope: pure refactor, zero API change, no new state.
 
@@ -137,26 +138,32 @@ missing keys (returns 0), backward range.
 
 Risk: negligible. This is a pure function extraction.
 
-## Phase 2 - `Editor` selection state + sync plugin
+## Phase 2 - `Editor` selection state + sync plugin [SHIPPED]
 
 Scope: add cached selection to `Editor`, introduce `SelectionSyncPlugin`,
-keep toolbar on its current DOM listener so we can dual-run and compare
-during rollout.
+keep toolbar on its current DOM listener so Phase 3 can migrate the
+consumer incrementally. The "dual-run validation" described below was
+descoped during implementation - see "Decisions Taken" #6.
 
 ### Additions to `Editor` (`libs/editor/src/lib/editor/core/editor.ts`)
 
 ```ts
 class Editor {
-  // New state
   private currentSelection: TextRange | null = null;
-  private selectionListeners = new Set<SelectionListener>();
+  private selectionListeners: SelectionListener[] = [];
+
+  // Transaction staging: setSelection() calls made inside update() land
+  // here and flush at the end of the outermost transaction.
+  private pendingSelection: PendingSelection | undefined;
+  private isUpdating = false;
 
   getSelection(): TextRange | null;
-  setSelection(range: TextRange | null): void;   // diffs by structural equality, notifies only on change
+  setSelection(range: TextRange | null, options?: { source?: SelectionSource }): void;
   registerSelectionListener(cb: SelectionListener): () => void;
 }
 
-type SelectionListener = (range: TextRange | null) => void;
+type SelectionSource = 'user' | 'programmatic';
+type SelectionListener = (range: TextRange | null, source: SelectionSource) => void;
 ```
 
 Invariants:
@@ -178,7 +185,7 @@ write selection without smuggling the `Editor` reference:
 interface EditorPluginContext {
   // ... existing members ...
   getSelection(): TextRange | null;
-  setSelection(range: TextRange | null): void;
+  setSelection(range: TextRange | null, options?: SetSelectionOptions): void;
   registerSelectionListener(cb: SelectionListener): () => void;
 }
 ```
@@ -186,46 +193,81 @@ interface EditorPluginContext {
 ### Stale-selection handling
 
 Structural mutations via `FORMAT_TEXT` (split/merge) or future commands can
-invalidate the anchor/focus keys in the cached selection. Policy for V2:
+invalidate the anchor/focus keys in the cached selection. Policy shipped
+in V2:
 
-- After `editor.update()` completes, if the cached selection references a
-key that is no longer in `state.nodes`, call `setSelection(null)`
-internally before notifying update listeners. The sync plugin's next
-`selectionchange` event (fired by the browser as the DOM recomposes) will
-refill the cache.
+- After `editor.update()` mutates state, `Editor.maybeInvalidatePendingSelection`
+runs. It validates the effective selection (staged pending value if the
+mutator called `setSelection`, else the cached one) against the new
+state. A selection is "valid" iff:
+  1. both `anchor.key` and `focus.key` resolve to live `TextNode`s in
+     `state.nodes`, AND
+  2. the offsets fit within each node's current `text.length`.
+
+  The offset check matters because `EditorState.createEmpty()` produces
+deterministic keys (`t1`, `p1`, ...), so a `CLEAR_EDITOR` or
+snapshot swap reuses key `t1` but leaves it empty; without the offset
+guard, offsets like 2 and 5 into the old "hello" would carry over
+into the new empty `t1`.
+
+- Invalid ranges are replaced with `null` in `pendingSelection`. The
+flush after update listeners emits one clean `null` notification to
+`SelectionListener`s, preserving the staged `source` tag when
+overriding a user-staged value.
+
+- `setEditorState` (wholesale snapshot swap) runs the same check
+synchronously - if the cached selection is invalid against the new
+state, we emit `setSelection(null, 'programmatic')` before firing
+update listeners.
+
 - No key remapping. That is a Lexical-style "selection reconciliation" pass
 and belongs with undo/redo, not here.
 
 ### `SelectionSyncPlugin` (`libs/editor/src/lib/editor/plugins/selection-sync.plugin.ts`)
 
+Shipped shape (simplified pseudocode; see the file for the real
+implementation):
+
 ```ts
 export const SelectionSyncPlugin: EditorPlugin = {
   key: 'core/selection-sync',
   setup(ctx) {
-    let detachDomListener: (() => void) | null = null;
+    let detachDom: (() => void) | null = null;
+    let currentRoot: HTMLElement | null = null;
 
-    const unregisterRoot = ctx.onRootElement((root) => {
-      detachDomListener?.();
-      detachDomListener = null;
-      if (!root || typeof document === 'undefined') return;
-
-      const onChange = () => {
-        const sel = window.getSelection();
-        const anchor = sel?.anchorNode;
-        if (!anchor || !root.contains(anchor)) {
-          ctx.setSelection(null);
-          return;
+    const onChange = () => {
+      if (!currentRoot) return;
+      const win = currentRoot.ownerDocument?.defaultView;
+      const sel = win?.getSelection();
+      const anchor = sel?.anchorNode ?? null;
+      if (!anchor || !currentRoot.contains(anchor)) {
+        if (ctx.getSelection() !== null) {
+          ctx.setSelection(null, { source: 'user' });
         }
-        ctx.setSelection(resolveDomSelection(ctx, window));
-      };
+        return;
+      }
+      ctx.setSelection(resolveDomSelection(ctx, win!), { source: 'user' });
+    };
 
-      document.addEventListener('selectionchange', onChange);
-      detachDomListener = () => document.removeEventListener('selectionchange', onChange);
+    const unregisterRoot = ctx.registerRootElementListener((root) => {
+      detachDom?.();
+      detachDom = null;
+      currentRoot = null;
+      if (!root) {
+        if (ctx.getSelection() !== null) {
+          ctx.setSelection(null, { source: 'programmatic' });
+        }
+        return;
+      }
+      const doc = root.ownerDocument!;
+      currentRoot = root;
+      doc.addEventListener('selectionchange', onChange);
+      detachDom = () => doc.removeEventListener('selectionchange', onChange);
     });
 
     return () => {
-      detachDomListener?.();
       unregisterRoot();
+      detachDom?.();
     };
   },
 };
@@ -237,39 +279,43 @@ export function provideSelectionSyncPlugin(): Provider {
 
 Notes:
 
-- `root.contains(sel.anchorNode)` scopes the listener. Multiple editors on
-one page each get their own plugin instance and each filters to its own
-root.
-- `document.removeEventListener` is reference-equal to the `add` call, so
-Angular HMR root swaps detach cleanly via the `onRootElement` mount/unmount
-cycle.
-- No dependency on Angular in the plugin file itself (the provider helper
-stays in the same file but consumers who want it headless can import
-`SelectionSyncPlugin` directly).
+- `currentRoot.contains(sel.anchorNode)` scopes the listener. Multiple
+editors on one page each get their own plugin instance and each filters
+to its own root.
+- The "leaving the root" path uses `source: 'user'` (the user moved the
+caret elsewhere); the "root unmounted" path uses `source: 'programmatic'`
+(the editor itself dropped the cache because nothing is rendered). This
+distinction shows up in listener call logs and is verified in tests.
+- Null-dedup: when the cached selection is already `null` we skip
+`setSelection(null)` entirely. Otherwise every `selectionchange` on the
+page (even for text far away from the editor) would trigger a spurious
+notification.
+- Root detach/re-attach cycles flow naturally through
+`registerRootElementListener`, so Angular HMR root swaps just work.
+- No dependency on Angular in the plugin file itself. The provider helper
+lives in `plugins/index.ts`; consumers who want a headless setup can
+deep-import `SelectionSyncPlugin` directly.
 
-### Automatic wiring via `EditorRuntimeService`
+### Registration: explicit, not automatic
 
-Opt-in **by default** for Angular: `EditorRuntimeService` auto-registers
-`SelectionSyncPlugin`, mirroring how the runtime already wires the default
-command handlers. Consumers who want a headless editor instantiate
-`new Editor()` directly and either register the plugin themselves or push
-into `setSelection` from their own code (e.g. tests).
+The plugin is **not** auto-registered by `EditorRuntimeService`. Angular
+consumers opt in with `provideSelectionSyncPlugin()` in the same providers
+array where they opt in to the formatting keyboard plugin. This matches
+the existing plugin-registration convention and keeps headless editors
+(tests, non-Angular hosts) free of DOM-touching code by default.
 
-### Dual-run validation
+Acceptance (all met):
 
-During Phase 2 the toolbar keeps its existing `selectionchange` listener.
-Add a parallel listener on `editor.registerSelectionListener` that asserts
-both paths agree, guarded behind a dev-only flag. Once green for one
-milestone of real usage, Phase 3 removes the DOM listener from the toolbar.
-
-Acceptance:
-
-- New unit tests (`editor.spec.ts`) for `setSelection` / `getSelection`
-idempotence, listener fire-on-change-only, listener unsubscribe.
-- New unit tests for stale-selection invalidation after structural updates.
-- New integration tests covering `SelectionSyncPlugin` with multiple editors
-on one page and with programmatic DOM selections.
-- Toolbar behavior unchanged from the user's perspective.
+- 21 new unit tests in `editor.spec.ts` for `setSelection` / `getSelection`
+idempotence, transaction batching, update-listener interplay,
+stale-selection invalidation (including offset-out-of-bounds), and
+`setEditorState` integration.
+- 7 integration tests in `plugins/selection-sync.plugin.spec.ts`
+covering native `selectionchange` forwarding, out-of-root filtering,
+null-dedup, teardown, root swap, and multi-editor isolation.
+- Plugin-context exposure asserted in `plugin.spec.ts`.
+- Toolbar behavior unchanged from the user's perspective - it is still
+on its own DOM listener until Phase 3.
 
 ## Phase 3 - Toolbar consumes editor selection directly
 
@@ -342,36 +388,68 @@ plugins.
 | Microtask storms during fast typing                           | `setSelection` de-dupes by structural equality, so only *actual* changes notify. Consumers that need debouncing can wrap their listener. |
 
 
-## Open questions
+## Decisions taken
 
-Leave items here as you review; I'll roll them up into the design before
-implementation begins.
+The questions raised during design were resolved before Phase 2 coding.
+For future readers, they are recorded here in the order they appeared in
+the original note.
 
-- Should `setSelection` accept a `{ source: 'user' | 'programmatic' }`
-tag so consumers can distinguish caret moves from `FORMAT_TEXT`-style
-replays? (Needed for "scroll into view on user caret move, not on
-programmatic" patterns.)
-- Do we want to expose the cached selection via a read-only accessor on
-`EditorPluginContext`, or require plugins to subscribe via
-`registerSelectionListener` only?
-- Should `SelectionSyncPlugin` be auto-registered by
-`EditorRuntimeService`, or require explicit
-`provideSelectionSyncPlugin()` like the formatting plugin does?
-- Naming: `setSelection` vs. `updateSelection` vs. `commitSelection`.
-Lexical uses `editor.update(() => { $setSelection(...) })`; we are
-intentionally simpler here, but should we mirror the naming for
-future-compat?
-- Should `getFormatIntersection` live in `selection.ts`
-(range-oriented) or `text-format.ts` (format-oriented)? Same function,
-different mental model for the reader.
+1. **Source tag on `setSelection`.** *Yes*, with a typed union
+`SelectionSource = 'user' | 'programmatic'`. Defaults to
+`'programmatic'`. `SelectionSyncPlugin` passes `'user'` on native
+`selectionchange`. Extending the signature to a string bag was
+rejected as premature; the closed enum is cheaper to reason about
+and easy to extend later.
+
+2. **Plugin-context exposure.** All three methods
+(`getSelection`, `setSelection`, `registerSelectionListener`) are on
+`EditorPluginContext`, not just the listener. This lets command
+handlers read the current selection synchronously (e.g. the future
+`FORMAT_TEXT_AT_SELECTION` command) without having to smuggle the
+`Editor` reference.
+
+3. **Auto-registration.** *Explicit*. Angular consumers call
+`provideSelectionSyncPlugin()`, symmetric with
+`provideFormattingKeyboardPlugin()`. Headless editors stay
+DOM-listener-free by default. Trade-off accepted: the formatting
+toolbar demo now has two providers to wire, but in exchange we keep
+the core library free of ambient DOM listeners.
+
+4. **API naming.** *Lexical-shaped, adapted*. Methods are named
+`setSelection` / `getSelection`, but the semantics match Lexical's
+transaction model: calls inside `editor.update()` are staged and
+flushed after update listeners. When selection eventually moves onto
+`EditorState` (undo/redo milestone), a thin `$setSelection` wrapper
+can be added without changing existing callers. Full-Lexical
+(module-level `$`-prefixed ambient-context helpers) was rejected
+because we do not have ambient-context plumbing anywhere else and
+introducing it just for selection was out of proportion.
+
+5. **`getFormatIntersection` location.** *`selection.ts`*. It
+operates on ranges (anchor/focus -> node walk), so grouping it with
+other range-oriented utilities wins. `text-format.ts` stays scoped to
+bitfield-level operations.
+
+6. **Dual-run validation.** *Descoped.* Tests cover the editor-owned
+path end-to-end, and the toolbar keeps its existing listener through
+Phase 2. When Phase 3 migrates the toolbar off the DOM listener, the
+integration tests in `formatting-integration.spec.ts` will catch any
+divergence directly. A parallel-listener assertion harness would have
+been write-only infrastructure.
+
+7. **Stale-selection listener fire.** *Fire listeners with `null`.*
+Briefly showing "no selection" to the toolbar when keys disappear
+matches reality - the browser is about to repaint and the next
+`selectionchange` refills the cache anyway. Silent invalidation would
+leave listeners disagreeing with the editor's internal state.
 
 ## Sequencing summary
 
 
-| Phase | Touches                                       | Risk                     | Ships independently? |
-| ----- | --------------------------------------------- | ------------------------ | -------------------- |
-| 1     | `core/selection.ts`, toolbar                  | Very low                 | Yes                  |
-| 2     | `core/editor.ts`, new plugin, runtime service | Medium (new API surface) | Yes                  |
-| 3     | Toolbar only                                  | Low (relies on Phase 2)  | Yes                  |
+| Phase | Touches                                                           | Risk                     | Status     |
+| ----- | ----------------------------------------------------------------- | ------------------------ | ---------- |
+| 1     | `core/selection.ts`, toolbar                                      | Very low                 | Shipped    |
+| 2     | `core/editor.ts`, `core/plugin.ts`, new `selection-sync.plugin.ts` | Medium (new API surface) | Shipped    |
+| 3     | Toolbar only                                                      | Low (relies on Phase 2)  | Pending    |
 
 

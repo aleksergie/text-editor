@@ -4,8 +4,9 @@ import {
   CommandPriority,
   EditorCommand,
 } from './commands';
-import { RootElementListener, UpdateListener } from './editor';
+import { RootElementListener, SetSelectionOptions, UpdateListener } from './editor';
 import { NodeKey } from './nodes/node';
+import { SelectionListener, TextRange } from './selection';
 import { EditorState } from './state';
 
 /**
@@ -22,6 +23,13 @@ export interface EditorPluginContext {
   ): () => void;
   registerUpdateListener(listener: UpdateListener): () => void;
   registerRootElementListener(listener: RootElementListener): () => void;
+  /**
+   * Subscribe to editor-owned selection changes. Fires outside `update()`
+   * transactions, only when the cached range actually changes by
+   * structural equality. See `Editor.registerSelectionListener` for full
+   * semantics.
+   */
+  registerSelectionListener(listener: SelectionListener): () => void;
   dispatchCommand<TCommand extends EditorCommand<unknown>>(
     command: TCommand,
     payload: CommandPayloadType<TCommand>,
@@ -30,6 +38,14 @@ export interface EditorPluginContext {
   update(fn: (state: EditorState) => void): void;
   getEditorState(): EditorState;
   setEditorState(state: EditorState): void;
+  /**
+   * Read / write the editor's cached selection. `getSelection` returns
+   * the last known range (or `null`), `setSelection` updates it and
+   * notifies listeners. Writes during an `update()` transaction are
+   * staged and flushed at commit time.
+   */
+  getSelection(): TextRange | null;
+  setSelection(range: TextRange | null, options?: SetSelectionOptions): void;
   /**
    * DOM <-> model lookup helpers. `keyForDomNode` returns the NodeKey of the
    * nearest model-mapped ancestor of `node` (walking up through formatting

@@ -5,11 +5,15 @@ export { ContentEditableDirective } from './lib/editor/ui/directives/content-edi
 export { EditorRuntimeService } from './lib/editor/angular/editor-runtime.service';
 export { EDITOR_PLUGINS, providePlugin } from './lib/editor/angular/editor-plugins.token';
 
-export { provideFormattingKeyboardPlugin } from './lib/editor/plugins';
+export {
+  provideFormattingKeyboardPlugin,
+  provideSelectionSyncPlugin,
+} from './lib/editor/plugins';
 
 export { Editor } from './lib/editor/core/editor';
 export type {
   RootElementListener,
+  SetSelectionOptions,
   UpdateListener,
   UpdateListenerPayload,
 } from './lib/editor/core/editor';
@@ -32,10 +36,13 @@ export {
   createTextRange,
   getFormatIntersection,
   getRangeStartEnd,
+  rangesEqual,
   resolveDomSelection,
 } from './lib/editor/core/selection';
 export type {
+  SelectionListener,
   SelectionResolverHost,
+  SelectionSource,
   TextPoint,
   TextRange,
 } from './lib/editor/core/selection';

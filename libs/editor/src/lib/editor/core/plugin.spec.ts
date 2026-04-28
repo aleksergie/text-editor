@@ -14,11 +14,17 @@ describe('EditorPluginContext', () => {
   it('exposes the documented public API surface', () => {
     expect(typeof context.registerCommand).toBe('function');
     expect(typeof context.registerUpdateListener).toBe('function');
+    expect(typeof context.registerRootElementListener).toBe('function');
+    expect(typeof context.registerSelectionListener).toBe('function');
     expect(typeof context.dispatchCommand).toBe('function');
     expect(typeof context.read).toBe('function');
     expect(typeof context.update).toBe('function');
     expect(typeof context.getEditorState).toBe('function');
     expect(typeof context.setEditorState).toBe('function');
+    expect(typeof context.getSelection).toBe('function');
+    expect(typeof context.setSelection).toBe('function');
+    expect(typeof context.keyForDomNode).toBe('function');
+    expect(typeof context.getDomForKey).toBe('function');
   });
 
   it('omits private editor internals from the context', () => {
