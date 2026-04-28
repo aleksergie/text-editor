@@ -607,34 +607,44 @@ export class SelectionDebugPanelComponent implements AfterViewInit {
 
   private recomputeStatsAndFormat(): void {
     const state = this.runtime.editor.getEditorState();
-    let textNodes = 0;
-    let paragraphs = 0;
-    for (const node of state.nodes.values()) {
-      const type = (node as { type?: string }).type;
-      if (type === 'text') {
-        textNodes += 1;
-      } else if (type === 'paragraph') {
-        paragraphs += 1;
-      }
-    }
+    const textNodeCount = state.getTextNodesInDocumentOrder().length;
+    const paragraphCount = this.countDirectChildrenOfRoot(state);
+
     this.stats = {
       ...this.stats,
       nodeCount: state.nodes.size,
-      textNodeCount: textNodes,
-      paragraphCount: paragraphs,
+      textNodeCount,
+      paragraphCount,
     };
     const range = this.runtime.editor.getSelection();
     this.activeFlags = range ? getFormatIntersection(state, range) : TextFormat.NONE;
   }
 
-  private firstTextNodeKey(): string | null {
-    const state = this.runtime.editor.getEditorState();
-    for (const node of state.nodes.values()) {
-      if ((node as { type?: string }).type === 'text') {
-        return (node as { key: string }).key;
-      }
+  /**
+   * Walk the doubly-linked list of root's direct children to count
+   * paragraphs (and any other top-level block types we add later). The
+   * root's `__first` + each child's `__next` are the engine's canonical
+   * way to traverse siblings; iterating `state.nodes` and checking a
+   * `__type === 'paragraph'` field would also work but is less explicit
+   * about the structural invariant.
+   */
+  private countDirectChildrenOfRoot(
+    state: ReturnType<EditorRuntimeService['editor']['getEditorState']>,
+  ): number {
+    type LinkedNode = { __first?: string | null; __next?: string | null };
+    const root = state.nodes.get(state.rootKey) as LinkedNode | undefined;
+    let cursor = root?.__first ?? null;
+    let count = 0;
+    while (cursor) {
+      count += 1;
+      cursor = (state.nodes.get(cursor) as LinkedNode | undefined)?.__next ?? null;
     }
-    return null;
+    return count;
+  }
+
+  private firstTextNodeKey(): string | null {
+    const [first] = this.runtime.editor.getEditorState().getTextNodesInDocumentOrder();
+    return first?.key ?? null;
   }
 
   private now(): string {
