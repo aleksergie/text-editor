@@ -219,10 +219,6 @@ export class Editor {
     return false;
   }
 
-  /**
-   * Produce a plugin-facing context exposing only documented public APIs.
-   * Methods are bound so plugins can destructure/pass them freely.
-   */
   getPluginContext(): EditorPluginContext {
     return {
       registerCommand: this.registerCommand.bind(this),

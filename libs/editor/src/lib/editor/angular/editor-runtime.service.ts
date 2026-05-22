@@ -3,14 +3,6 @@ import { Editor } from '../core/editor';
 import { EditorPlugin } from '../core/plugin';
 import { EDITOR_PLUGINS } from './editor-plugins.token';
 
-/**
- * Owns a single editor runtime instance for the component it is provided on.
- * Loads plugins from the `EDITOR_PLUGINS` multi-provider, invokes each
- * plugin's `setup`, and tears everything down on `ngOnDestroy`.
- *
- * This service MUST be provided at the component level (not `providedIn:
- * 'root'`) so that each editor host gets its own isolated runtime.
- */
 @Injectable()
 export class EditorRuntimeService implements OnDestroy {
   private readonly plugins = inject<readonly EditorPlugin[] | null>(EDITOR_PLUGINS, {

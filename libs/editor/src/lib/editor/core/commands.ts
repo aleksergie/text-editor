@@ -2,11 +2,6 @@ import type { TextRange } from './selection';
 import type { EditorState } from './state';
 import type { TextFormatFlag } from './text-format';
 
-/**
- * Module-private brand symbol. Declared with `unique symbol` so its type is
- * nominal, and intentionally not exported so no code outside this module can
- * reference the key to forge or satisfy the brand property.
- */
 declare const COMMAND_PAYLOAD_BRAND: unique symbol;
 
 /**
