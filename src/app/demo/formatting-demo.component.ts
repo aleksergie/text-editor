@@ -1,9 +1,9 @@
-import { Component, inject } from '@angular/core';
+import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import {
   ContentEditableDirective,
-  EditorRuntimeService,
   FormattingToolbarComponent,
+  provideEditor,
   provideFormattingKeyboardPlugin,
   provideSelectionSyncPlugin,
 } from '@text-editor/editor';
@@ -21,7 +21,7 @@ import { SelectionDebugPanelComponent } from './selection-debug-panel.component'
 @Component({
   selector: 'app-formatting-demo',
   imports: [CommonModule, ContentEditableDirective, FormattingToolbarComponent, SelectionDebugPanelComponent],
-  providers: [EditorRuntimeService, provideFormattingKeyboardPlugin(), provideSelectionSyncPlugin()],
+  providers: [provideEditor(), provideFormattingKeyboardPlugin(), provideSelectionSyncPlugin()],
   template: `
     <div class="formatting-demo">
       <h1 class="formatting-demo__title">Rich text formatting demo</h1>
@@ -38,7 +38,6 @@ import { SelectionDebugPanelComponent } from './selection-debug-panel.component'
             class="formatting-demo__surface"
             contenteditable="true"
             spellcheck="true"
-            [editor]="runtime.editor"
           ></div>
         </div>
 
@@ -106,6 +105,4 @@ import { SelectionDebugPanelComponent } from './selection-debug-panel.component'
     `,
   ],
 })
-export class FormattingDemoComponent {
-  protected readonly runtime = inject(EditorRuntimeService);
-}
+export class FormattingDemoComponent {}

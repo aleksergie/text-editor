@@ -4,13 +4,15 @@ import {
   ChangeDetectionStrategy,
   ChangeDetectorRef,
   Component,
-  DestroyRef,
   ElementRef,
   ViewChild,
+  effect,
   inject,
 } from '@angular/core';
 import {
-  EditorRuntimeService,
+  Editor,
+  EditorRef,
+  EditorState,
   SelectionSource,
   TextFormat,
   TextFormatFlag,
@@ -470,9 +472,8 @@ const MAX_LOG_ENTRIES = 100;
   ],
 })
 export class SelectionDebugPanelComponent implements AfterViewInit {
-  private readonly runtime = inject(EditorRuntimeService);
+  private readonly editorRef = inject(EditorRef);
   private readonly cdr = inject(ChangeDetectorRef);
-  private readonly destroyRef = inject(DestroyRef);
 
   @ViewChild('logScroll') private logScrollRef?: ElementRef<HTMLDivElement>;
 
@@ -494,10 +495,19 @@ export class SelectionDebugPanelComponent implements AfterViewInit {
   private shouldScrollToBottom = false;
 
   constructor() {
-    this.recomputeStatsAndFormat();
+    effect((onCleanup) => {
+      const editor = this.editorRef.editor();
+      if (!editor) {
+        this.currentRange = null;
+        this.lastSource = '-';
+        this.activeFlags = TextFormat.NONE;
+        this.cdr.markForCheck();
+        return;
+      }
 
-    const unsubSelection = this.runtime.editor.registerSelectionListener(
-      (range, source) => {
+      this.recomputeStatsAndFormat(editor);
+
+      const unsubSelection = editor.registerSelectionListener((range, source) => {
         this.currentRange = range;
         this.lastSource = source;
         this.counts = {
@@ -511,31 +521,31 @@ export class SelectionDebugPanelComponent implements AfterViewInit {
           backward: range?.isBackward ?? false,
           collapsed: range?.isCollapsed ?? false,
         });
-        this.recomputeStatsAndFormat();
+        this.recomputeStatsAndFormat(editor);
         this.cdr.markForCheck();
-      },
-    );
-
-    const unsubUpdates = this.runtime.editor.registerUpdateListener((payload) => {
-      this.stats = {
-        ...this.stats,
-        lastDirtySize: payload.dirtyNodeKeys.size,
-      };
-      this.counts = { ...this.counts, updates: this.counts.updates + 1 };
-      this.pushLog({
-        kind: 'update',
-        source: '-',
-        summary: `dirty=${payload.dirtyNodeKeys.size}`,
-        backward: false,
-        collapsed: false,
       });
-      this.recomputeStatsAndFormat();
-      this.cdr.markForCheck();
-    });
 
-    this.destroyRef.onDestroy(() => {
-      unsubSelection();
-      unsubUpdates();
+      const unsubUpdates = editor.registerUpdateListener((payload) => {
+        this.stats = {
+          ...this.stats,
+          lastDirtySize: payload.dirtyNodeKeys.size,
+        };
+        this.counts = { ...this.counts, updates: this.counts.updates + 1 };
+        this.pushLog({
+          kind: 'update',
+          source: '-',
+          summary: `dirty=${payload.dirtyNodeKeys.size}`,
+          backward: false,
+          collapsed: false,
+        });
+        this.recomputeStatsAndFormat(editor);
+        this.cdr.markForCheck();
+      });
+
+      onCleanup(() => {
+        unsubSelection();
+        unsubUpdates();
+      });
     });
   }
 
@@ -553,7 +563,11 @@ export class SelectionDebugPanelComponent implements AfterViewInit {
   }
 
   emitProgrammaticRange(): void {
-    const firstTextKey = this.firstTextNodeKey();
+    const editor = this.editorRef.editor();
+    if (!editor) {
+      return;
+    }
+    const firstTextKey = this.firstTextNodeKey(editor);
     if (!firstTextKey) {
       return;
     }
@@ -562,11 +576,11 @@ export class SelectionDebugPanelComponent implements AfterViewInit {
       { key: firstTextKey, offset: 3 },
       false,
     );
-    this.runtime.editor.setSelection(range, { source: 'programmatic' });
+    editor.setSelection(range, { source: 'programmatic' });
   }
 
   emitProgrammaticNull(): void {
-    this.runtime.editor.setSelection(null, { source: 'programmatic' });
+    this.editorRef.editor()?.setSelection(null, { source: 'programmatic' });
   }
 
   trackById(_index: number, entry: LogEntry): number {
@@ -605,8 +619,8 @@ export class SelectionDebugPanelComponent implements AfterViewInit {
     return `${range.anchor.key}:${range.anchor.offset} ${dir} ${range.focus.key}:${range.focus.offset}`;
   }
 
-  private recomputeStatsAndFormat(): void {
-    const state = this.runtime.editor.getEditorState();
+  private recomputeStatsAndFormat(editor: Editor): void {
+    const state = editor.getEditorState();
     const textNodeCount = state.getTextNodesInDocumentOrder().length;
     const paragraphCount = this.countDirectChildrenOfRoot(state);
 
@@ -616,7 +630,7 @@ export class SelectionDebugPanelComponent implements AfterViewInit {
       textNodeCount,
       paragraphCount,
     };
-    const range = this.runtime.editor.getSelection();
+    const range = editor.getSelection();
     this.activeFlags = range ? getFormatIntersection(state, range) : TextFormat.NONE;
   }
 
@@ -628,9 +642,7 @@ export class SelectionDebugPanelComponent implements AfterViewInit {
    * `__type === 'paragraph'` field would also work but is less explicit
    * about the structural invariant.
    */
-  private countDirectChildrenOfRoot(
-    state: ReturnType<EditorRuntimeService['editor']['getEditorState']>,
-  ): number {
+  private countDirectChildrenOfRoot(state: EditorState): number {
     type LinkedNode = { __first?: string | null; __next?: string | null };
     const root = state.nodes.get(state.rootKey) as LinkedNode | undefined;
     let cursor = root?.__first ?? null;
@@ -642,8 +654,8 @@ export class SelectionDebugPanelComponent implements AfterViewInit {
     return count;
   }
 
-  private firstTextNodeKey(): string | null {
-    const [first] = this.runtime.editor.getEditorState().getTextNodesInDocumentOrder();
+  private firstTextNodeKey(editor: Editor): string | null {
+    const [first] = editor.getEditorState().getTextNodesInDocumentOrder();
     return first?.key ?? null;
   }
 

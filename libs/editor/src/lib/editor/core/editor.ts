@@ -55,6 +55,10 @@ export interface SetSelectionOptions {
   source?: SelectionSource;
 }
 
+export function createEditor(): Editor {
+  return new Editor();
+}
+
 export class Editor {
   private state = EditorState.createEmpty();
   private reconciler = new Reconciler();

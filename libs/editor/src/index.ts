@@ -2,7 +2,7 @@ export * from './lib/editor/feature/components/editor.component';
 export { FormattingToolbarComponent } from './lib/editor/ui/components/formatting-toolbar/formatting-toolbar.component';
 export { ContentEditableDirective } from './lib/editor/ui/directives/content-editable/content-editable.directive';
 
-export { EditorRuntimeService } from './lib/editor/angular/editor-runtime.service';
+export { EditorRef, provideEditor } from './lib/editor/angular/editor-ref';
 export { EDITOR_PLUGINS, providePlugin } from './lib/editor/angular/editor-plugins.token';
 
 export {
@@ -10,7 +10,7 @@ export {
   provideSelectionSyncPlugin,
 } from './lib/editor/plugins';
 
-export { Editor } from './lib/editor/core/editor';
+export { Editor, createEditor } from './lib/editor/core/editor';
 export type {
   RootElementListener,
   SetSelectionOptions,

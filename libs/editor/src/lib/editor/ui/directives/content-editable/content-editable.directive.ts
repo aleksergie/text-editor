@@ -4,20 +4,20 @@ import {
   forwardRef,
   HostListener,
   inject,
-  Input,
-  OnChanges,
   OnDestroy,
   OnInit,
-  SimpleChanges,
 } from '@angular/core';
 import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
+import { EditorRef } from '../../../angular/editor-ref';
+import { EDITOR_PLUGINS } from '../../../angular/editor-plugins.token';
 import {
   DELETE_CHARACTER,
   INSERT_PARAGRAPH,
   INSERT_TEXT,
   SET_TEXT_CONTENT,
 } from '../../../core/commands';
-import { Editor } from '../../../core/editor';
+import { createEditor, Editor } from '../../../core/editor';
+import { EditorPlugin } from '../../../core/plugin';
 
 type HandledInputType =
   | 'insertText'
@@ -43,30 +43,45 @@ const HANDLED_INPUT_TYPES = new Set<HandledInputType>([
   ],
 })
 export class ContentEditableDirective
-  implements ControlValueAccessor, OnInit, OnChanges, OnDestroy
+  implements ControlValueAccessor, OnInit, OnDestroy
 {
   private readonly elRef: ElementRef<HTMLElement> = inject(ElementRef);
-
-  @Input() editor?: Editor;
+  private readonly editorRef = inject(EditorRef);
+  private readonly plugins = inject<readonly EditorPlugin[] | null>(EDITOR_PLUGINS, {
+    optional: true,
+  }) ?? [];
 
   private onTouched: () => void = () => undefined;
   private onChange: (value: string) => void = () => undefined;
 
+  private editor: Editor | null = null;
+  private pluginTeardowns: Array<() => void> = [];
   private isComposing = false;
   /** Ignore update listener emissions triggered by our own `writeValue`. */
   private writingValue = false;
   /** True when the most recent state change was driven by our bridge. */
   private lastChangeFromBridge = false;
   private unregisterUpdateListener: (() => void) | null = null;
+  private pendingWriteValue: string | null = null;
 
   ngOnInit(): void {
-    this.attach(this.editor);
-  }
-
-  ngOnChanges(changes: SimpleChanges): void {
-    if (changes['editor'] && !changes['editor'].firstChange) {
-      this.detach();
-      this.attach(this.editor);
+    const editor = createEditor();
+    this.editor = editor;
+    for (const plugin of this.plugins) {
+      const cleanup = plugin.setup(editor.getPluginContext());
+      if (typeof cleanup === 'function') {
+        this.pluginTeardowns.push(cleanup);
+      }
+    }
+    this.editorRef.set(editor);
+    editor.setRoot(this.elRef.nativeElement);
+    this.unregisterUpdateListener = editor.registerUpdateListener(() => {
+      this.afterUpdate();
+    });
+    if (this.pendingWriteValue !== null) {
+      const value = this.pendingWriteValue;
+      this.pendingWriteValue = null;
+      this.setEditorTextFromControl(value);
     }
   }
 
@@ -142,11 +157,16 @@ export class ContentEditableDirective
 
   writeValue(value: unknown): void {
     if (!this.editor) {
+      this.pendingWriteValue = String(value ?? '');
       return;
     }
+    this.setEditorTextFromControl(String(value ?? ''));
+  }
+
+  private setEditorTextFromControl(value: string): void {
     this.writingValue = true;
     try {
-      this.editor.dispatchCommand(SET_TEXT_CONTENT, String(value ?? ''));
+      this.editor?.dispatchCommand(SET_TEXT_CONTENT, value);
     } finally {
       this.writingValue = false;
     }
@@ -162,20 +182,19 @@ export class ContentEditableDirective
 
   // --- internals -----------------------------------------------------------
 
-  private attach(editor: Editor | undefined): void {
-    if (!editor) {
-      return;
-    }
-    editor.setRoot(this.elRef.nativeElement);
-    this.unregisterUpdateListener = editor.registerUpdateListener(() => {
-      this.afterUpdate();
-    });
-  }
-
   private detach(): void {
     this.unregisterUpdateListener?.();
     this.unregisterUpdateListener = null;
+    for (let i = this.pluginTeardowns.length - 1; i >= 0; i -= 1) {
+      this.pluginTeardowns[i]();
+    }
+    this.pluginTeardowns = [];
+    for (const plugin of this.plugins) {
+      plugin.destroy?.();
+    }
     this.editor?.setRoot(null);
+    this.editor = null;
+    this.editorRef.set(null);
   }
 
   private afterUpdate(): void {

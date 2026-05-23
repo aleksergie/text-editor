@@ -1,23 +1,22 @@
 import { Component, inject, ViewChild } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { FormControl, ReactiveFormsModule } from '@angular/forms';
+import { EditorRef, provideEditor } from '../../../angular/editor-ref';
 import { Editor } from '../../../core/editor';
-import { EditorRuntimeService } from '../../../angular/editor-runtime.service';
 import { ContentEditableDirective } from './content-editable.directive';
 
 @Component({
   template: `<div
     #host
     contenteditable
-    [editor]="runtime.editor"
     data-testid="host"
   ></div>`,
   standalone: true,
   imports: [ContentEditableDirective],
-  providers: [EditorRuntimeService],
+  providers: [provideEditor()],
 })
 class HarnessComponent {
-  readonly runtime = inject(EditorRuntimeService);
+  readonly editorRef = inject(EditorRef);
   @ViewChild('host', { static: true }) host!: { nativeElement: HTMLElement };
 }
 
@@ -26,14 +25,13 @@ class HarnessComponent {
     #host
     contenteditable
     [formControl]="ctrl"
-    [editor]="runtime.editor"
   ></div>`,
   standalone: true,
   imports: [ContentEditableDirective, ReactiveFormsModule],
-  providers: [EditorRuntimeService],
+  providers: [provideEditor()],
 })
 class FormHarnessComponent {
-  readonly runtime = inject(EditorRuntimeService);
+  readonly editorRef = inject(EditorRef);
   readonly ctrl = new FormControl<string>('');
   @ViewChild('host', { static: true }) host!: { nativeElement: HTMLElement };
 }
@@ -51,6 +49,12 @@ function createBeforeInput(
   });
 }
 
+function getEditor(ref: EditorRef): Editor {
+  const editor = ref.editor();
+  expect(editor).not.toBeNull();
+  return editor as Editor;
+}
+
 describe('ContentEditableDirective - bridge', () => {
   let fixture: ComponentFixture<HarnessComponent>;
   let editor: Editor;
@@ -60,7 +64,7 @@ describe('ContentEditableDirective - bridge', () => {
     TestBed.configureTestingModule({ imports: [HarnessComponent] });
     fixture = TestBed.createComponent(HarnessComponent);
     fixture.detectChanges();
-    editor = fixture.componentInstance.runtime.editor;
+    editor = getEditor(fixture.componentInstance.editorRef);
     host = fixture.componentInstance.host.nativeElement;
   });
 
@@ -150,7 +154,7 @@ describe('ContentEditableDirective - ControlValueAccessor', () => {
     TestBed.configureTestingModule({ imports: [FormHarnessComponent] });
     fixture = TestBed.createComponent(FormHarnessComponent);
     fixture.detectChanges();
-    editor = fixture.componentInstance.runtime.editor;
+    editor = getEditor(fixture.componentInstance.editorRef);
     host = fixture.componentInstance.host.nativeElement;
   });
 

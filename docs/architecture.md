@@ -6,6 +6,8 @@ Snapshot of the system as of V2 rich-text formatting. Companion notes:
 - `docs/rich-text-formatting-plan.md` - V2 rich-text design.
 - `docs/selection-state-design.md` - in-flight refactor for editor-owned
 selection state (Phase 1 landed, Phases 2-3 pending).
+- `docs/decisions/ADR-001-directive-owns-editor-lifecycle.md` - decision
+record for directive-owned Angular editor lifecycle.
 
 This document describes the system in three views:
 
@@ -28,6 +30,9 @@ No Angular, no DOM events, no framework assumptions beyond "there is a
 - `**Editor`** - the orchestrator. Owns the current `EditorState`, the
 `Reconciler`, the command bus, and the update/root listener sets. Exposes
 a small plugin surface via `EditorPluginContext`.
+- `**createEditor()`** - the framework-agnostic constructor helper. It
+accepts no plugins and returns a fresh `Editor`; host adapters own plugin
+setup and teardown.
 - `**EditorState`** - the document graph. A `NodeMap` keyed by `NodeKey`
 plus structural helpers (insert/remove/split/merge). Every mutation goes
 through `insertAfterUtil` / `removeUtil` / `replaceUtil` so the
@@ -71,14 +76,15 @@ Location: `libs/editor/src/lib/editor/feature/`,
 Standalone Angular building blocks. Each one is framework-specific but
 individually mountable; nothing forces you to use all three together.
 
-- `**EditorComponent`** - the V1 "drop-in" host: provides
-`EditorRuntimeService` and renders a `contenteditable` div wired to
-`ContentEditableDirective`.
+- `**EditorComponent`** - the V1 "drop-in" host: provides `provideEditor()`
+and renders a `contenteditable` div wired to `ContentEditableDirective`.
 - `**ContentEditableDirective**` - attaches to any `contenteditable` host,
-subscribes to editor updates, and translates native `beforeinput` events
-into typed commands.
+creates the `Editor`, runs Angular-provided plugins, publishes the editor
+through `EditorRef`, mounts the DOM root, subscribes to editor updates, and
+translates native `beforeinput` events into typed commands. It is also the
+`ControlValueAccessor` bridge for Angular forms.
 - `**FormattingToolbarComponent**` - standalone toolbar. Subscribes to
-editor updates and native `selectionchange`, uses
+`EditorRef.editor()`, then listens to editor selection/update events, uses
 `getFormatIntersection` to derive `activeFlags`, and dispatches
 `FORMAT_TEXT` on button mousedown.
 
@@ -86,19 +92,20 @@ editor updates and native `selectionchange`, uses
 
 Location: `libs/editor/src/lib/editor/angular/`
 
-- `**EditorRuntimeService**` - per-instance, DI-scoped service that owns a
-single `Editor`. Registers default command handlers and any plugins
-injected via `EDITOR_PLUGINS`.
+- `**EditorRef` + `provideEditor()`** - per-host DI handle that exposes the
+directive-created editor as `Signal<Editor | null>`. The signal is `null`
+before `ContentEditableDirective` initializes and after it is destroyed, so
+sibling UI can subscribe without depending on template order.
 - `**EDITOR_PLUGINS` token + `providePlugin()` helper** - the DI-shaped
-way to register plugins. `provideFormattingKeyboardPlugin()` wraps it for
-ergonomics.
+way to register plugins. The directive reads this token and owns plugin
+setup/teardown. `provideFormattingKeyboardPlugin()` wraps it for ergonomics.
 
 ### Layer 5: Application
 
 Location: `apps/text-editor/`
 
 - `**AppComponent` + router** with two routes:
-  - `/` - `FormattingDemoComponent` providing `EditorRuntimeService`,
+  - `/` - `FormattingDemoComponent` providing `provideEditor()`,
   `provideFormattingKeyboardPlugin()`, and rendering
   `FormattingToolbarComponent` alongside a `contenteditable` div.
   - `/plain` - `<lib-editor>` (the V1 baseline).
@@ -213,8 +220,9 @@ downstream path.
    resolves the current DOM selection via `resolveDomSelection` and
    dispatches `FORMAT_TEXT` with a `TextFormatFlag` and the `TextRange`.
 3. **Toolbar (`FormattingToolbarComponent`).** On button `mousedown` it
-  calls `preventDefault` (so focus stays in the editor), resolves the
-   current DOM selection, and dispatches `FORMAT_TEXT`.
+  calls `preventDefault` (so focus stays in the editor), reads the cached
+   editor selection from `Editor.getSelection()`, and dispatches
+   `FORMAT_TEXT`.
 
 A fourth path - programmatic API calls - is available to any code holding
 an `Editor` reference: `editor.dispatchCommand(CMD, payload)` bypasses the
@@ -275,14 +283,11 @@ DOM-dependent reads (element bounds, selection) see the final layout.
 
 In the current code:
 
-- `FormattingToolbarComponent` uses an update listener plus a native
-`selectionchange` subscription to recompute `activeFlags`.
-- `ContentEditableDirective` uses an update listener to coordinate its
-mount lifecycle.
-
-The in-flight selection-state refactor (Phase 2 in
-`docs/selection-state-design.md`) introduces a dedicated selection
-listener so consumers stop needing the `selectionchange` subscription.
+- `FormattingToolbarComponent` subscribes to `EditorRef.editor()`, then uses
+an update listener plus a selection listener to recompute `activeFlags`.
+- `ContentEditableDirective` creates the editor, mounts/unmounts the DOM
+root, and uses an update listener to coordinate the `ControlValueAccessor`
+bridge.
 
 ## System Properties Worth Preserving
 
@@ -303,8 +308,8 @@ across all the split / merge / format operations added in V2.
 version; individual node types carry their own `static version` (e.g.
 `TextNode.version = 2` for rich-text). Import paths accept older
 node-level versions by defaulting missing fields.
-- **One editor per `EditorRuntimeService`.** DI scoping means multiple
-editors on the same page get their own runtime, own plugin stack, own
-DOM, own command bus. The selection-sync plugin planned for Phase 2
-filters by `root.contains` so cross-talk is impossible.
+- **One editor per `provideEditor()` scope.** DI scoping means multiple
+editors on the same page get their own `EditorRef`, own directive-created
+editor, own plugin stack, own DOM, and own command bus. The selection-sync
+plugin filters by `root.contains` so cross-talk is impossible.
 

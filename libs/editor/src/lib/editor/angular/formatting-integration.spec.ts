@@ -1,24 +1,31 @@
-import { Component, DestroyRef, ViewChild, inject } from '@angular/core';
+import { Component, ViewChild, inject } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { FORMAT_TEXT } from '../core/commands';
+import { Editor } from '../core/editor';
 import { createTextRange } from '../core/selection';
 import { TextFormat, hasFormat } from '../core/text-format';
 import { FormattingKeyboardPlugin } from '../plugins/formatting-keyboard.plugin';
 import { SelectionSyncPlugin } from '../plugins/selection-sync.plugin';
 import { ContentEditableDirective } from '../ui/directives/content-editable/content-editable.directive';
 import { FormattingToolbarComponent } from '../ui/components/formatting-toolbar/formatting-toolbar.component';
+import { EditorRef, provideEditor } from './editor-ref';
 import { providePlugin } from './editor-plugins.token';
-import { EditorRuntimeService } from './editor-runtime.service';
+
+function getEditor(ref: EditorRef): Editor {
+  const editor = ref.editor();
+  expect(editor).not.toBeNull();
+  return editor as Editor;
+}
 
 @Component({
   standalone: true,
   imports: [ContentEditableDirective, FormattingToolbarComponent],
   template: `
     <lib-formatting-toolbar></lib-formatting-toolbar>
-    <div #host contenteditable [editor]="runtime.editor"></div>
+    <div #host contenteditable></div>
   `,
   providers: [
-    EditorRuntimeService,
+    provideEditor(),
     providePlugin(FormattingKeyboardPlugin),
     // SelectionSyncPlugin is the Phase-3 contract: the toolbar reads
     // selection from the editor cache, which is populated by this plugin
@@ -28,8 +35,7 @@ import { EditorRuntimeService } from './editor-runtime.service';
   ],
 })
 class FormattingHostComponent {
-  readonly runtime = inject(EditorRuntimeService);
-  readonly destroyRef = inject(DestroyRef);
+  readonly editorRef = inject(EditorRef);
   @ViewChild('host', { static: true }) host!: { nativeElement: HTMLElement };
   @ViewChild(FormattingToolbarComponent, { static: true })
   toolbar!: FormattingToolbarComponent;
@@ -42,11 +48,11 @@ describe('Formatting integration', () => {
     });
   });
 
-  it('FORMAT_TEXT flows from command bus through the runtime and re-renders the DOM', () => {
+  it('FORMAT_TEXT flows from command bus through the directive-owned editor and re-renders the DOM', () => {
     const fixture = TestBed.createComponent(FormattingHostComponent);
     fixture.detectChanges();
 
-    const editor = fixture.componentInstance.runtime.editor;
+    const editor = getEditor(fixture.componentInstance.editorRef);
     editor.update((state) => {
       const t = state.getTextNodesInDocumentOrder()[0];
       t.text = 'hello';
@@ -73,7 +79,7 @@ describe('Formatting integration', () => {
     const fixture = TestBed.createComponent(FormattingHostComponent);
     fixture.detectChanges();
 
-    const editor = fixture.componentInstance.runtime.editor;
+    const editor = getEditor(fixture.componentInstance.editorRef);
     const host = fixture.componentInstance.host.nativeElement;
 
     // Seed and mount a selection over the entire text run via DOM selection
@@ -107,7 +113,7 @@ describe('Formatting integration', () => {
     const firstSpan = host.firstElementChild?.firstElementChild as HTMLElement;
     expect(firstSpan.firstElementChild?.tagName).toBe('STRONG');
 
-    // Destroy the fixture: runtime teardown runs plugin cleanup which detaches
+    // Destroy the fixture: directive teardown runs plugin cleanup which detaches
     // the keydown listener. A subsequent keydown must not change the model.
     fixture.destroy();
 
@@ -130,8 +136,8 @@ describe('Formatting integration', () => {
     fixtureA.detectChanges();
     fixtureB.detectChanges();
 
-    const editorA = fixtureA.componentInstance.runtime.editor;
-    const editorB = fixtureB.componentInstance.runtime.editor;
+    const editorA = getEditor(fixtureA.componentInstance.editorRef);
+    const editorB = getEditor(fixtureB.componentInstance.editorRef);
     expect(editorA).not.toBe(editorB);
 
     [editorA, editorB].forEach((editor) => {
@@ -209,11 +215,44 @@ describe('Formatting integration', () => {
       }
     }
 
+    it('toolbar subscribes even when it renders before the contenteditable directive', () => {
+      const fixture = TestBed.createComponent(FormattingHostComponent);
+      fixture.detectChanges();
+
+      const editor = getEditor(fixture.componentInstance.editorRef);
+      const toolbar = fixture.componentInstance.toolbar;
+      editor.update((state) => {
+        const t = state.getTextNodesInDocumentOrder()[0];
+        t.text = 'hello';
+        state.markDirty(t.key);
+      });
+      editor.dispatchCommand(FORMAT_TEXT, {
+        format: TextFormat.BOLD,
+        range: createTextRange(
+          { key: 't1', offset: 0 },
+          { key: 't1', offset: 5 },
+          false,
+        ),
+      });
+
+      editor.setSelection(
+        createTextRange(
+          { key: 't1', offset: 0 },
+          { key: 't1', offset: 5 },
+          false,
+        ),
+        { source: 'user' },
+      );
+      fixture.detectChanges();
+
+      expect(hasFormat(toolbar.activeFlags, TextFormat.BOLD)).toBe(true);
+    });
+
     it('toolbar activeFlags update when SelectionSyncPlugin forwards a native selectionchange', () => {
       const fixture = TestBed.createComponent(FormattingHostComponent);
       fixture.detectChanges();
 
-      const editor = fixture.componentInstance.runtime.editor;
+      const editor = getEditor(fixture.componentInstance.editorRef);
       const host = fixture.componentInstance.host.nativeElement;
       const toolbar = fixture.componentInstance.toolbar;
 
@@ -265,7 +304,7 @@ describe('Formatting integration', () => {
       const fixture = TestBed.createComponent(FormattingHostComponent);
       fixture.detectChanges();
 
-      const editor = fixture.componentInstance.runtime.editor;
+      const editor = getEditor(fixture.componentInstance.editorRef);
       const host = fixture.componentInstance.host.nativeElement;
 
       editor.update((state) => {
@@ -319,8 +358,8 @@ describe('Formatting integration', () => {
         fixtureA.detectChanges();
         fixtureB.detectChanges();
 
-        const editorA = fixtureA.componentInstance.runtime.editor;
-        const editorB = fixtureB.componentInstance.runtime.editor;
+        const editorA = getEditor(fixtureA.componentInstance.editorRef);
+        const editorB = getEditor(fixtureB.componentInstance.editorRef);
         const hostA = fixtureA.componentInstance.host.nativeElement;
         const hostB = fixtureB.componentInstance.host.nativeElement;
         const toolbarA = fixtureA.componentInstance.toolbar;

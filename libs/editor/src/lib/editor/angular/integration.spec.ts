@@ -5,10 +5,11 @@ import {
   INSERT_TEXT,
   SET_TEXT_CONTENT,
 } from '../core/commands';
+import { Editor } from '../core/editor';
 import { EditorPlugin } from '../core/plugin';
 import { ContentEditableDirective } from '../ui/directives/content-editable/content-editable.directive';
+import { EditorRef, provideEditor } from './editor-ref';
 import { EDITOR_PLUGINS, providePlugin } from './editor-plugins.token';
-import { EditorRuntimeService } from './editor-runtime.service';
 
 function createBeforeInput(
   inputType: string,
@@ -20,6 +21,12 @@ function createBeforeInput(
     inputType,
     data: init.data ?? null,
   });
+}
+
+function getEditor(ref: EditorRef): Editor {
+  const editor = ref.editor();
+  expect(editor).not.toBeNull();
+  return editor as Editor;
 }
 
 /** A plugin that upper-cases every INSERT_TEXT payload before it reaches the default handler. */
@@ -41,30 +48,22 @@ const uppercasingPlugin: EditorPlugin = {
 @Component({
   standalone: true,
   imports: [ContentEditableDirective],
-  template: `<div
-    #host
-    contenteditable
-    [editor]="runtime.editor"
-  ></div>`,
-  providers: [EditorRuntimeService, providePlugin(uppercasingPlugin)],
+  template: `<div #host contenteditable></div>`,
+  providers: [provideEditor(), providePlugin(uppercasingPlugin)],
 })
 class HostWithPluginComponent {
-  readonly runtime = inject(EditorRuntimeService);
+  readonly editorRef = inject(EditorRef);
   @ViewChild('host', { static: true }) host!: { nativeElement: HTMLElement };
 }
 
 @Component({
   standalone: true,
   imports: [ContentEditableDirective],
-  template: `<div
-    #host
-    contenteditable
-    [editor]="runtime.editor"
-  ></div>`,
-  providers: [EditorRuntimeService],
+  template: `<div #host contenteditable></div>`,
+  providers: [provideEditor()],
 })
 class BareHostComponent {
-  readonly runtime = inject(EditorRuntimeService);
+  readonly editorRef = inject(EditorRef);
   @ViewChild('host', { static: true }) host!: { nativeElement: HTMLElement };
 }
 
@@ -79,9 +78,7 @@ describe('Editor Angular integration', () => {
       const host = fixture.componentInstance.host.nativeElement;
       host.dispatchEvent(createBeforeInput('insertText', { data: 'hi' }));
 
-      expect(fixture.componentInstance.runtime.editor.read((s) => s.getText())).toBe(
-        'HI',
-      );
+      expect(getEditor(fixture.componentInstance.editorRef).read((s) => s.getText())).toBe('HI');
     });
 
     it('destroying the fixture tears down plugin teardowns', () => {
@@ -94,12 +91,10 @@ describe('Editor Angular integration', () => {
       @Component({
         standalone: true,
         imports: [ContentEditableDirective],
-        template: `<div #h contenteditable [editor]="runtime.editor"></div>`,
-        providers: [EditorRuntimeService, providePlugin(plugin)],
+        template: `<div #h contenteditable></div>`,
+        providers: [provideEditor(), providePlugin(plugin)],
       })
-      class TeardownHostComponent {
-        readonly runtime = inject(EditorRuntimeService);
-      }
+      class TeardownHostComponent {}
 
       const fixture = TestBed.configureTestingModule({
         imports: [TeardownHostComponent],
@@ -116,7 +111,7 @@ describe('Editor Angular integration', () => {
       }).createComponent(HostWithPluginComponent);
       fixture.detectChanges();
       const host = fixture.componentInstance.host.nativeElement;
-      const editor = fixture.componentInstance.runtime.editor;
+      const editor = getEditor(fixture.componentInstance.editorRef);
 
       fixture.destroy();
 
@@ -132,21 +127,17 @@ describe('Editor Angular integration', () => {
       imports: [ContentEditableDirective, HostWithPluginComponent, BareHostComponent],
       template: `
         <ng-container #a>
-          <div #h1 contenteditable [editor]="runtime1.editor"></div>
+          <div #h1 contenteditable></div>
         </ng-container>
         <ng-container #b>
-          <div #h2 contenteditable [editor]="runtime2.editor"></div>
+          <div #h2 contenteditable></div>
         </ng-container>
       `,
-      // Component-scoped providers; the two runtimes below come from an
-      // injector sub-tree per child so they're independent instances.
-      providers: [{ provide: 'R1', useClass: EditorRuntimeService }],
+      providers: [provideEditor()],
     })
     class DummyHarnessComponent {
       // Only used to keep the imports referenced above alive for the type
       // checker - real isolation tests below drive sibling fixtures.
-      readonly runtime1 = inject(EditorRuntimeService);
-      readonly runtime2 = inject(EditorRuntimeService);
     }
 
     it('two sibling component fixtures get independent editors', () => {
@@ -157,8 +148,8 @@ describe('Editor Angular integration', () => {
       f1.detectChanges();
       f2.detectChanges();
 
-      const e1 = f1.componentInstance.runtime.editor;
-      const e2 = f2.componentInstance.runtime.editor;
+      const e1 = getEditor(f1.componentInstance.editorRef);
+      const e2 = getEditor(f2.componentInstance.editorRef);
 
       expect(e1).not.toBe(e2);
 
@@ -189,10 +180,10 @@ describe('Editor Angular integration', () => {
         createBeforeInput('insertText', { data: 'bare' }),
       );
 
-      expect(pluginized.componentInstance.runtime.editor.read((s) => s.getText())).toBe(
+      expect(getEditor(pluginized.componentInstance.editorRef).read((s) => s.getText())).toBe(
         'PLUG',
       );
-      expect(bare.componentInstance.runtime.editor.read((s) => s.getText())).toBe(
+      expect(getEditor(bare.componentInstance.editorRef).read((s) => s.getText())).toBe(
         'bare',
       );
 

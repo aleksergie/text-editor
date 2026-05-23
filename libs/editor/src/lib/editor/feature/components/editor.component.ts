@@ -1,6 +1,6 @@
-import { Component, inject } from '@angular/core';
+import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { EditorRuntimeService } from '../../angular/editor-runtime.service';
+import { provideEditor } from '../../angular/editor-ref';
 import { ContentEditableDirective } from '../../ui/directives/content-editable/content-editable.directive';
 
 @Component({
@@ -8,9 +8,6 @@ import { ContentEditableDirective } from '../../ui/directives/content-editable/c
   imports: [CommonModule, ContentEditableDirective],
   templateUrl: './editor.component.html',
   styleUrl: './editor.component.scss',
-  providers: [EditorRuntimeService],
+  providers: [provideEditor()],
 })
-export class EditorComponent {
-  private readonly runtime = inject(EditorRuntimeService);
-  readonly editor = this.runtime.editor;
-}
+export class EditorComponent {}

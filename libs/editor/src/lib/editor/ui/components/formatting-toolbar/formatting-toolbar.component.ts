@@ -2,12 +2,13 @@ import {
   ChangeDetectionStrategy,
   ChangeDetectorRef,
   Component,
-  DestroyRef,
+  effect,
   inject,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { EditorRef } from '../../../angular/editor-ref';
 import { FORMAT_TEXT } from '../../../core/commands';
-import { EditorRuntimeService } from '../../../angular/editor-runtime.service';
+import { Editor } from '../../../core/editor';
 import { getFormatIntersection } from '../../../core/selection';
 import {
   TextFormat,
@@ -46,9 +47,8 @@ const BUTTONS: readonly ToolbarButton[] = [
  *   <lib-formatting-toolbar></lib-formatting-toolbar>
  *
  * Requirements:
- * - The host component must provide `EditorRuntimeService` (typically by
- *   rendering the editor surface in the same component or by re-providing
- *   the service on a wrapper).
+ * - The host component must provide `provideEditor()` and render a
+ *   `ContentEditableDirective` in the same provider scope.
  * - `provideSelectionSyncPlugin()` MUST be in the providers, otherwise
  *   the toolbar will receive no selection updates and its buttons will
  *   never light up. The toolbar deliberately does NOT auto-register the
@@ -70,9 +70,8 @@ const BUTTONS: readonly ToolbarButton[] = [
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class FormattingToolbarComponent {
-  private readonly runtime = inject(EditorRuntimeService);
+  private readonly editorRef = inject(EditorRef);
   private readonly cdr = inject(ChangeDetectorRef);
-  private readonly destroyRef = inject(DestroyRef);
 
   readonly buttons = BUTTONS;
   activeFlags = 0;
@@ -82,16 +81,23 @@ export class FormattingToolbarComponent {
     // update(), and a future format-affecting command might mutate state
     // without changing selection. The `bits !== activeFlags` guard inside
     // refresh() de-dupes any redundant markForCheck.
-    const unsubscribeSelection = this.runtime.editor.registerSelectionListener(() => {
-      this.refresh();
-    });
-    const unsubscribeUpdates = this.runtime.editor.registerUpdateListener(() => {
-      this.refresh();
-    });
-
-    this.destroyRef.onDestroy(() => {
-      unsubscribeSelection();
-      unsubscribeUpdates();
+    effect((onCleanup) => {
+      const editor = this.editorRef.editor();
+      if (!editor) {
+        this.setActiveFlags(TextFormat.NONE);
+        return;
+      }
+      const unsubscribeSelection = editor.registerSelectionListener(() => {
+        this.refresh(editor);
+      });
+      const unsubscribeUpdates = editor.registerUpdateListener(() => {
+        this.refresh(editor);
+      });
+      this.refresh(editor);
+      onCleanup(() => {
+        unsubscribeSelection();
+        unsubscribeUpdates();
+      });
     });
   }
 
@@ -104,18 +110,23 @@ export class FormattingToolbarComponent {
     // through the button press, so the cached range is still the user's
     // intended target when we read it below.
     event.preventDefault();
-    const range = this.runtime.editor.getSelection();
-    if (!range || range.isCollapsed) {
+    const editor = this.editorRef.editor();
+    const range = editor?.getSelection() ?? null;
+    if (!editor || !range || range.isCollapsed) {
       return;
     }
-    this.runtime.editor.dispatchCommand(FORMAT_TEXT, { format: flag, range });
+    editor.dispatchCommand(FORMAT_TEXT, { format: flag, range });
   }
 
-  private refresh(): void {
-    const range = this.runtime.editor.getSelection();
+  private refresh(editor: Editor): void {
+    const range = editor.getSelection();
     const bits = range && !range.isCollapsed
-      ? getFormatIntersection(this.runtime.editor.getEditorState(), range)
+      ? getFormatIntersection(editor.getEditorState(), range)
       : TextFormat.NONE;
+    this.setActiveFlags(bits);
+  }
+
+  private setActiveFlags(bits: number): void {
     if (bits !== this.activeFlags) {
       this.activeFlags = bits;
       this.cdr.markForCheck();
