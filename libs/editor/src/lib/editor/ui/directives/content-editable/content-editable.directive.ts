@@ -1,13 +1,11 @@
 import {
   Directive,
   ElementRef,
-  forwardRef,
   HostListener,
   inject,
   OnDestroy,
   OnInit,
 } from '@angular/core';
-import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
 import { EditorRef } from '../../../angular/editor-ref';
 import { EDITOR_PLUGINS } from '../../../angular/editor-plugins.token';
 import {
@@ -34,35 +32,20 @@ const HANDLED_INPUT_TYPES = new Set<HandledInputType>([
 
 @Directive({
   selector: '[contenteditable]',
-  providers: [
-    {
-      provide: NG_VALUE_ACCESSOR,
-      useExisting: forwardRef(() => ContentEditableDirective),
-      multi: true,
-    },
-  ],
 })
-export class ContentEditableDirective
-  implements ControlValueAccessor, OnInit, OnDestroy
-{
+export class ContentEditableDirective implements OnInit, OnDestroy {
   private readonly elRef: ElementRef<HTMLElement> = inject(ElementRef);
   private readonly editorRef = inject(EditorRef);
   private readonly plugins = inject<readonly EditorPlugin[] | null>(EDITOR_PLUGINS, {
     optional: true,
   }) ?? [];
 
-  private onTouched: () => void = () => undefined;
-  private onChange: (value: string) => void = () => undefined;
-
   private editor: Editor | null = null;
   private pluginTeardowns: Array<() => void> = [];
   private isComposing = false;
-  /** Ignore update listener emissions triggered by our own `writeValue`. */
-  private writingValue = false;
   /** True when the most recent state change was driven by our bridge. */
   private lastChangeFromBridge = false;
   private unregisterUpdateListener: (() => void) | null = null;
-  private pendingWriteValue: string | null = null;
 
   ngOnInit(): void {
     const editor = createEditor();
@@ -78,11 +61,6 @@ export class ContentEditableDirective
     this.unregisterUpdateListener = editor.registerUpdateListener(() => {
       this.afterUpdate();
     });
-    if (this.pendingWriteValue !== null) {
-      const value = this.pendingWriteValue;
-      this.pendingWriteValue = null;
-      this.setEditorTextFromControl(value);
-    }
   }
 
   ngOnDestroy(): void {
@@ -148,38 +126,6 @@ export class ContentEditableDirective
     this.resyncFromDom();
   }
 
-  @HostListener('blur')
-  onBlur(): void {
-    this.onTouched();
-  }
-
-  // --- ControlValueAccessor ------------------------------------------------
-
-  writeValue(value: unknown): void {
-    if (!this.editor) {
-      this.pendingWriteValue = String(value ?? '');
-      return;
-    }
-    this.setEditorTextFromControl(String(value ?? ''));
-  }
-
-  private setEditorTextFromControl(value: string): void {
-    this.writingValue = true;
-    try {
-      this.editor?.dispatchCommand(SET_TEXT_CONTENT, value);
-    } finally {
-      this.writingValue = false;
-    }
-  }
-
-  registerOnChange(onChange: (value: string) => void): void {
-    this.onChange = onChange;
-  }
-
-  registerOnTouched(onTouched: () => void): void {
-    this.onTouched = onTouched;
-  }
-
   // --- internals -----------------------------------------------------------
 
   private detach(): void {
@@ -200,10 +146,6 @@ export class ContentEditableDirective
   private afterUpdate(): void {
     if (!this.editor) {
       return;
-    }
-    const text = this.editor.read((s) => s.getText());
-    if (!this.writingValue) {
-      this.onChange(text);
     }
     // Only reposition the caret for mutations that originated at this bridge
     // (typing, deletion, Enter). Programmatic / plugin-driven updates leave

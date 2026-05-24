@@ -153,7 +153,7 @@
 
 - Scope:
 - Route `beforeinput`, `input`, `keydown`, `compositionstart`, `compositionend`, and selection changes into command/update pipeline.
-- Keep `ControlValueAccessor` compatibility for forms.
+- `ControlValueAccessor` was removed from the contenteditable directive for single-responsibility; the directive owns lifecycle and input bridging only.
 - Dependencies:
 - M2-T4, M1-T5.
 - Acceptance Criteria:

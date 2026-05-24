@@ -1,6 +1,5 @@
 import { Component, inject, ViewChild } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { EditorRef, provideEditor } from '../../../angular/editor-ref';
 import { Editor } from '../../../core/editor';
 import { ContentEditableDirective } from './content-editable.directive';
@@ -17,22 +16,6 @@ import { ContentEditableDirective } from './content-editable.directive';
 })
 class HarnessComponent {
   readonly editorRef = inject(EditorRef);
-  @ViewChild('host', { static: true }) host!: { nativeElement: HTMLElement };
-}
-
-@Component({
-  template: `<div
-    #host
-    contenteditable
-    [formControl]="ctrl"
-  ></div>`,
-  standalone: true,
-  imports: [ContentEditableDirective, ReactiveFormsModule],
-  providers: [provideEditor()],
-})
-class FormHarnessComponent {
-  readonly editorRef = inject(EditorRef);
-  readonly ctrl = new FormControl<string>('');
   @ViewChild('host', { static: true }) host!: { nativeElement: HTMLElement };
 }
 
@@ -142,44 +125,5 @@ describe('ContentEditableDirective - bridge', () => {
 
       expect(editor.read((s) => s.getText())).toBe('composed');
     });
-  });
-});
-
-describe('ContentEditableDirective - ControlValueAccessor', () => {
-  let fixture: ComponentFixture<FormHarnessComponent>;
-  let editor: Editor;
-  let host: HTMLElement;
-
-  beforeEach(() => {
-    TestBed.configureTestingModule({ imports: [FormHarnessComponent] });
-    fixture = TestBed.createComponent(FormHarnessComponent);
-    fixture.detectChanges();
-    editor = getEditor(fixture.componentInstance.editorRef);
-    host = fixture.componentInstance.host.nativeElement;
-  });
-
-  it('writeValue via setValue replaces the editor text', () => {
-    fixture.componentInstance.ctrl.setValue('from form');
-
-    expect(editor.read((s) => s.getText())).toBe('from form');
-  });
-
-  it('does not re-emit onChange for programmatic writeValue', () => {
-    const changes: Array<string | null> = [];
-    fixture.componentInstance.ctrl.valueChanges.subscribe((v) => changes.push(v));
-
-    fixture.componentInstance.ctrl.setValue('programmatic');
-
-    // Only the user-initiated setValue emission, no round-trip from writeValue.
-    expect(changes).toEqual(['programmatic']);
-  });
-
-  it('emits plain text via onChange when the user types', () => {
-    const changes: Array<string | null> = [];
-    fixture.componentInstance.ctrl.valueChanges.subscribe((v) => changes.push(v));
-
-    host.dispatchEvent(createBeforeInput('insertText', { data: 'hi' }));
-
-    expect(changes).toContain('hi');
   });
 });

@@ -81,8 +81,7 @@ and renders a `contenteditable` div wired to `ContentEditableDirective`.
 - `**ContentEditableDirective**` - attaches to any `contenteditable` host,
 creates the `Editor`, runs Angular-provided plugins, publishes the editor
 through `EditorRef`, mounts the DOM root, subscribes to editor updates, and
-translates native `beforeinput` events into typed commands. It is also the
-`ControlValueAccessor` bridge for Angular forms.
+translates native `beforeinput` events into typed commands.
 - `**FormattingToolbarComponent**` - standalone toolbar. Subscribes to
 `EditorRef.editor()`, then listens to editor selection/update events, uses
 `getFormatIntersection` to derive `activeFlags`, and dispatches
@@ -286,8 +285,8 @@ In the current code:
 - `FormattingToolbarComponent` subscribes to `EditorRef.editor()`, then uses
 an update listener plus a selection listener to recompute `activeFlags`.
 - `ContentEditableDirective` creates the editor, mounts/unmounts the DOM
-root, and uses an update listener to coordinate the `ControlValueAccessor`
-bridge.
+root, and uses an update listener to reposition the caret after
+bridge-originated mutations.
 
 ## System Properties Worth Preserving
 

@@ -37,7 +37,7 @@ Related execution backlog: `docs/angular-lexical-editor-milestones.md`
 
 - Keep `lib-editor` as host component that owns one editor instance via `EditorRuntimeService`.
 - Keep contenteditable directive as DOM bridge; route `beforeinput/input/keydown/composition/selectionchange` into core commands/update pipeline.
-- Keep `ControlValueAccessor` bridge; `writeValue` restores JSON or plain text based on configured value mode.
+- `ControlValueAccessor` was removed from the contenteditable directive for single-responsibility; the directive owns lifecycle and input bridging only.
 - Avoid direct toolbar logic in component for now; toolbar buttons dispatch commands through editor instance.
 
 ### Serialization and I/O
