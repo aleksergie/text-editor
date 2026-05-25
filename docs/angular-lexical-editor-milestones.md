@@ -153,13 +153,14 @@
 
 - Scope:
 - Route `beforeinput`, `input`, `keydown`, `compositionstart`, `compositionend`, and selection changes into command/update pipeline.
-- `ControlValueAccessor` was removed from the contenteditable directive for single-responsibility; the directive owns lifecycle and input bridging only.
+- Input event bridging moved from the contenteditable directive into core editor events; the directive owns lifecycle, plugin setup, and root mounting only.
+- `ControlValueAccessor` was removed from the contenteditable directive for single-responsibility.
 - Dependencies:
 - M2-T4, M1-T5.
 - Acceptance Criteria:
 - Typing and basic deletion dispatch core commands through runtime.
 - IME composition does not produce duplicate insertions.
-- Directive tests cover event-to-command wiring and CVA behavior.
+- Core event tests cover event-to-command routing; directive tests keep smoke coverage for root wiring.
 
 ## Milestone M3: State Serialization + Interop
 

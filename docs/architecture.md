@@ -80,8 +80,8 @@ individually mountable; nothing forces you to use all three together.
 and renders a `contenteditable` div wired to `ContentEditableDirective`.
 - `**ContentEditableDirective**` - attaches to any `contenteditable` host,
 creates the `Editor`, runs Angular-provided plugins, publishes the editor
-through `EditorRef`, mounts the DOM root, subscribes to editor updates, and
-translates native `beforeinput` events into typed commands.
+through `EditorRef`, mounts the DOM root, and owns plugin lifecycle. The
+editor itself owns input event listeners.
 - `**FormattingToolbarComponent**` - standalone toolbar. Subscribes to
 `EditorRef.editor()`, then listens to editor selection/update events, uses
 `getFormatIntersection` to derive `activeFlags`, and dispatches
@@ -205,15 +205,14 @@ Update listeners fire at the end so UI surfaces can refresh derived state.
 Three surfaces feed commands into the bus, and they share the same
 downstream path.
 
-1. **Typing (`ContentEditableDirective`).** Native `beforeinput` events
-  are captured on the contenteditable host. The directive calls
-   `preventDefault` on the event (so the browser does not mutate the DOM)
-   and translates `inputType` into a command:
+1. **Typing (`Editor` input events).** Native `beforeinput` events are
+   captured by the core editor when a contenteditable root is mounted. The
+   editor dispatches `BEFORE_INPUT_COMMAND` with the raw `InputEvent`; the
+   default handler calls `preventDefault` only for routes it handles and
+   translates `inputType` into a command:
   - `insertText` -> `INSERT_TEXT`
   - `insertParagraph` -> `INSERT_PARAGRAPH`
-  - `deleteContentBackward` -> `DELETE_CHARACTER`
-  - `insertReplacementText` / `insertFromPaste` -> `INSERT_TEXT` with
-  clipboard data.
+  - `deleteContentBackward` / `deleteContentForward` -> `DELETE_CHARACTER`
 2. **Format shortcuts (`FormattingKeyboardPlugin`).** The plugin attaches
   a `keydown` listener via `onRootElement`. On a matching shortcut it
    resolves the current DOM selection via `resolveDomSelection` and
@@ -284,15 +283,16 @@ In the current code:
 
 - `FormattingToolbarComponent` subscribes to `EditorRef.editor()`, then uses
 an update listener plus a selection listener to recompute `activeFlags`.
-- `ContentEditableDirective` creates the editor, mounts/unmounts the DOM
-root, and uses an update listener to reposition the caret after
-bridge-originated mutations.
+- `ContentEditableDirective` creates the editor, runs Angular-provided
+plugins, and mounts/unmounts the DOM root.
 
 ## System Properties Worth Preserving
 
-- **Core is DOM-rendering-only.** No DOM event listeners live in `core/`.
-Formatting shortcuts, selection sync, clipboard handling all go through
-plugins that own the DOM-event contract.
+- **Core owns input bridging only.** Beyond `setRoot` and the
+`beforeinput`/`composition`/`input` listeners that translate user keystrokes
+into commands, no other DOM event listeners live in `core/`. Selection sync,
+formatting shortcuts, and clipboard handling all go through plugins that own
+the DOM-event contract. See ADR-002.
 - **Plugins use only `EditorPluginContext`.** No plugin reaches into the
 raw `Editor`. This is what lets the plugin API evolve without breaking
 existing plugins.

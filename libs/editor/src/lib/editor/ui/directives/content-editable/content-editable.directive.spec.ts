@@ -38,7 +38,7 @@ function getEditor(ref: EditorRef): Editor {
   return editor as Editor;
 }
 
-describe('ContentEditableDirective - bridge', () => {
+describe('ContentEditableDirective', () => {
   let fixture: ComponentFixture<HarnessComponent>;
   let editor: Editor;
   let host: HTMLElement;
@@ -58,72 +58,13 @@ describe('ContentEditableDirective - bridge', () => {
     });
   });
 
-  describe('beforeinput → commands', () => {
-    it('insertText dispatches INSERT_TEXT and prevents default', () => {
+  describe('input bridge smoke test', () => {
+    it('wires the editor-owned beforeinput listener through setRoot', () => {
       const event = createBeforeInput('insertText', { data: 'a' });
       host.dispatchEvent(event);
 
       expect(event.defaultPrevented).toBe(true);
-      expect(editor.read((s) => s.getText())).toBe('a');
-    });
-
-    it('accumulates insertText events into the document tail', () => {
-      host.dispatchEvent(createBeforeInput('insertText', { data: 'h' }));
-      host.dispatchEvent(createBeforeInput('insertText', { data: 'i' }));
-
-      expect(editor.read((s) => s.getText())).toBe('hi');
-    });
-
-    it('deleteContentBackward removes the last character', () => {
-      editor.update((state) => state.setText('hello'));
-      const event = createBeforeInput('deleteContentBackward');
-      host.dispatchEvent(event);
-
-      expect(event.defaultPrevented).toBe(true);
-      expect(editor.read((s) => s.getText())).toBe('hell');
-    });
-
-    it('deleteContentForward removes the first character', () => {
-      editor.update((state) => state.setText('hello'));
-      host.dispatchEvent(createBeforeInput('deleteContentForward'));
-
-      expect(editor.read((s) => s.getText())).toBe('ello');
-    });
-
-    it('insertParagraph appends a new paragraph', () => {
-      editor.update((state) => state.setText('first'));
-      host.dispatchEvent(createBeforeInput('insertParagraph'));
-      host.dispatchEvent(createBeforeInput('insertText', { data: 'second' }));
-
-      expect(editor.read((s) => s.getText())).toBe('firstsecond');
-    });
-
-    it('does not preventDefault for unhandled input types', () => {
-      const event = createBeforeInput('insertFromPaste', { data: 'x' });
-      host.dispatchEvent(event);
-
-      expect(event.defaultPrevented).toBe(false);
-    });
-  });
-
-  describe('composition (IME)', () => {
-    it('skips dispatch during composition', () => {
-      host.dispatchEvent(new Event('compositionstart'));
-
-      const event = createBeforeInput('insertText', { data: 'x', isComposing: true });
-      host.dispatchEvent(event);
-
-      expect(event.defaultPrevented).toBe(false);
-      expect(editor.read((s) => s.getText())).toBe('');
-    });
-
-    it('resyncs the model from innerText on compositionend', () => {
-      host.dispatchEvent(new Event('compositionstart'));
-      host.innerText = 'composed';
-
-      host.dispatchEvent(new Event('compositionend'));
-
-      expect(editor.read((s) => s.getText())).toBe('composed');
+      expect(editor.read((state) => state.getText())).toBe('a');
     });
   });
 });

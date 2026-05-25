@@ -62,6 +62,10 @@ export function createCommand<TPayload = void>(type: string): EditorCommand<TPay
 
 // --- V1 core commands -------------------------------------------------------
 
+/** Raw browser `beforeinput` event before the editor routes it to mutation commands. */
+export const BEFORE_INPUT_COMMAND: EditorCommand<InputEvent> =
+  createCommand<InputEvent>('BEFORE_INPUT_COMMAND');
+
 /** Insert text at the current (v1 DOM-derived) insertion point. */
 export const INSERT_TEXT: EditorCommand<{ text: string }> =
   createCommand<{ text: string }>('INSERT_TEXT');

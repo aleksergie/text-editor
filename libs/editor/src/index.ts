@@ -63,6 +63,7 @@ export { toPlainText, fromPlainText } from './lib/editor/core/plain-text';
 
 export {
   APPLY_EDITOR_STATE,
+  BEFORE_INPUT_COMMAND,
   CLEAR_EDITOR,
   CommandPriority,
   DELETE_CHARACTER,

@@ -11,6 +11,7 @@ import {
   INSERT_TEXT,
   SET_TEXT_CONTENT,
 } from './commands';
+import { bindEditorEvents, registerInputCommandHandlers } from './editor-events';
 import { NodeKey } from './nodes/node';
 import { $isTextNode } from './nodes/node-utils';
 import { EditorPluginContext } from './plugin';
@@ -63,6 +64,7 @@ export class Editor {
   private state = EditorState.createEmpty();
   private reconciler = new Reconciler();
   private root: HTMLElement | null = null;
+  private inputEventsTeardown: (() => void) | null = null;
   private commandHandlers = new Map<EditorCommand<unknown>, HandlerEntry[]>();
   private updateListeners: UpdateListener[] = [];
   private rootListeners: RootElementListener[] = [];
@@ -89,15 +91,19 @@ export class Editor {
 
   constructor() {
     this.registerDefaultHandlers();
+    registerInputCommandHandlers(this);
   }
 
   setRoot(root: HTMLElement | null) {
     if (this.root === root) {
       return;
     }
+    this.inputEventsTeardown?.();
+    this.inputEventsTeardown = null;
     this.root = root;
     if (root) {
       this.reconciler.mount(root, this.state);
+      this.inputEventsTeardown = bindEditorEvents(this, root);
     }
     this.notifyRootListeners(root);
   }
