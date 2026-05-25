@@ -84,9 +84,10 @@ toward:
 - The commit phase reconciles DOM, then writes DOM selection from the
   committed model selection.
 
-The important idea is not that this project must copy every Lexical
-internal detail. The important idea is that text and selection move
-together in one transaction.
+Where a Lexical internal detail is a good fit for this project, copying
+it is fine and often preferable to reinventing the shape. The important
+idea is that text and selection move together in one transaction; the
+Lexical implementation is a proven reference for how to get there.
 
 ## Desired Invariants
 
