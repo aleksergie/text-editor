@@ -2,9 +2,11 @@
 
 ## Status
 
-Future work. This note explains why the current input bridge uses a
-temporary caret-to-end fallback and what must replace it before richer
-editing behavior can be correct.
+Shipped (2026-05-27). Input commands are selection-aware, model selection
+updates inside the same transaction as document mutations, and the editor
+writes DOM selection from the committed model after reconcile via
+`writeDomSelection` inside `runWithObserverPaused`. The v1
+`placeCursorAtEnd` fallback is removed.
 
 ## Current V1 Behavior
 
@@ -124,6 +126,8 @@ writer to use `runWithObserverPaused` as soon as that helper exists.
 
 ### 1. Give input commands a selection source
 
+**Status: Shipped.**
+
 Commands such as `INSERT_TEXT`, `DELETE_CHARACTER`, and
 `INSERT_PARAGRAPH` need a current selection to operate on. The selection can
 come from the cached editor-owned selection, or from a freshly resolved DOM
@@ -134,6 +138,8 @@ It should route commands with enough context for the command handler to know
 where the user intended the edit.
 
 ### 2. Update selection inside mutations
+
+**Status: Shipped.**
 
 State mutations should move selection as they edit:
 
@@ -149,6 +155,10 @@ invariants stay intact.
 
 ### 3. Commit DOM selection from model selection
 
+**Status: Shipped.** Implemented in `core/dom-selection.ts` as
+`writeDomSelection`, called from `Editor.update(..., { syncDomSelection: true })`
+inside `runWithObserverPaused`.
+
 After reconciliation, the editor should translate the committed model
 selection back into DOM nodes and offsets using the reconciler lookup APIs.
 That replaces `placeCursorAtEnd()`.
@@ -161,6 +171,9 @@ The selection writer should handle at least:
 - root swaps and teardown.
 
 ### 4. Remove the bridge-local caret fallback
+
+**Status: Shipped.** `lastChangeFromBridge` and `placeCursorAtEnd()` are
+deleted from `core/editor-events.ts`.
 
 Once input commands update selection and commit writes DOM selection from
 the model, `lastChangeFromBridge` and `placeCursorAtEnd()` should be

@@ -7,6 +7,7 @@ import {
   SET_TEXT_CONTENT,
 } from './commands';
 import type { Editor } from './editor';
+import { resolveDomSelection, TextRange } from './selection';
 
 export function registerInputCommandHandlers(editor: Editor): void {
   editor.registerCommand(
@@ -19,17 +20,28 @@ export function registerInputCommandHandlers(editor: Editor): void {
             return false;
           }
           event.preventDefault();
-          return editor.dispatchCommand(INSERT_TEXT, { text });
+          return editor.dispatchCommand(INSERT_TEXT, {
+            text,
+            range: resolveInputSelection(editor),
+          });
         }
         case 'deleteContentBackward':
           event.preventDefault();
-          return editor.dispatchCommand(DELETE_CHARACTER, { isBackward: true });
+          return editor.dispatchCommand(DELETE_CHARACTER, {
+            isBackward: true,
+            range: resolveInputSelection(editor),
+          });
         case 'deleteContentForward':
           event.preventDefault();
-          return editor.dispatchCommand(DELETE_CHARACTER, { isBackward: false });
+          return editor.dispatchCommand(DELETE_CHARACTER, {
+            isBackward: false,
+            range: resolveInputSelection(editor),
+          });
         case 'insertParagraph':
           event.preventDefault();
-          return editor.dispatchCommand(INSERT_PARAGRAPH, undefined);
+          return editor.dispatchCommand(INSERT_PARAGRAPH, {
+            range: resolveInputSelection(editor),
+          });
         default:
           return false;
       }
@@ -40,17 +52,12 @@ export function registerInputCommandHandlers(editor: Editor): void {
 
 export function bindEditorEvents(editor: Editor, root: HTMLElement): () => void {
   let isComposing = false;
-  let lastChangeFromBridge = false;
 
   const onBeforeInput = (event: InputEvent) => {
     if (isComposing || event.isComposing) {
       return;
     }
-
-    lastChangeFromBridge = true;
-    if (!editor.dispatchCommand(BEFORE_INPUT_COMMAND, event)) {
-      lastChangeFromBridge = false;
-    }
+    editor.dispatchCommand(BEFORE_INPUT_COMMAND, event);
   };
 
   const onCompositionStart = () => {
@@ -59,29 +66,15 @@ export function bindEditorEvents(editor: Editor, root: HTMLElement): () => void 
 
   const onCompositionEnd = () => {
     isComposing = false;
-    lastChangeFromBridge = true;
-    if (!resyncFromDom(editor, root)) {
-      lastChangeFromBridge = false;
-    }
+    resyncFromDom(editor, root);
   };
 
   const onInput = () => {
     if (isComposing) {
       return;
     }
-    lastChangeFromBridge = true;
-    if (!resyncFromDom(editor, root)) {
-      lastChangeFromBridge = false;
-    }
+    resyncFromDom(editor, root);
   };
-
-  const unregisterUpdateListener = editor.registerUpdateListener(() => {
-    if (!lastChangeFromBridge) {
-      return;
-    }
-    lastChangeFromBridge = false;
-    placeCursorAtEnd(root);
-  });
 
   root.addEventListener('beforeinput', onBeforeInput);
   root.addEventListener('compositionstart', onCompositionStart);
@@ -93,8 +86,25 @@ export function bindEditorEvents(editor: Editor, root: HTMLElement): () => void 
     root.removeEventListener('compositionstart', onCompositionStart);
     root.removeEventListener('compositionend', onCompositionEnd);
     root.removeEventListener('input', onInput);
-    unregisterUpdateListener();
   };
+}
+
+function resolveInputSelection(editor: Editor): TextRange | null {
+  const root = editor.getRootElement();
+  if (!root) {
+    return editor.getSelection();
+  }
+  const win = root.ownerDocument?.defaultView as (Window & typeof globalThis) | null;
+  if (!win) {
+    return editor.getSelection();
+  }
+  const selection = win.getSelection?.();
+  const anchor = selection?.anchorNode ?? null;
+  const focus = selection?.focusNode ?? null;
+  if (!anchor || !focus || !root.contains(anchor) || !root.contains(focus)) {
+    return editor.getSelection();
+  }
+  return resolveDomSelection(editor, win) ?? editor.getSelection();
 }
 
 function resyncFromDom(editor: Editor, root: HTMLElement): boolean {
@@ -104,19 +114,4 @@ function resyncFromDom(editor: Editor, root: HTMLElement): boolean {
     return false;
   }
   return editor.dispatchCommand(SET_TEXT_CONTENT, domText);
-}
-
-function placeCursorAtEnd(root: HTMLElement): void {
-  const doc = root.ownerDocument;
-  const selection = doc.defaultView?.getSelection() ?? null;
-  if (!selection) {
-    return;
-  }
-  // V1 plain-text caret recovery. Selection-aware input commands should
-  // replace this with model-to-DOM selection sync.
-  const range = doc.createRange();
-  range.selectNodeContents(root);
-  range.collapse(false);
-  selection.removeAllRanges();
-  selection.addRange(range);
 }

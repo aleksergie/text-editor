@@ -10,8 +10,8 @@ Related prior work:
 - `docs/angular-lexical-editor-plan.md` - V1 minimal engine.
 - `docs/rich-text-formatting-plan.md` - V2 rich-text formatting, which
 surfaced the duplication problem this note addresses.
-- `docs/input-selection-roadmap.md` - future work to replace the v1
-caret-to-end fallback with transaction-owned input selection.
+- `docs/input-selection-roadmap.md` - shipped selection-aware input flow
+  and DOM selection writer with transaction-owned input selection.
 
 ## Why this exists
 

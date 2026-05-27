@@ -12,6 +12,7 @@ import {
   SET_TEXT_CONTENT,
 } from './commands';
 import { DomObserver, DomObserverCallback } from './dom-observer';
+import { writeDomSelection } from './dom-selection';
 import { bindEditorEvents, registerInputCommandHandlers } from './editor-events';
 import { NodeKey } from './nodes/node';
 import { $isTextNode } from './nodes/node-utils';
@@ -55,6 +56,11 @@ interface PendingSelection {
 export interface SetSelectionOptions {
   /** Origin tag forwarded to listeners. Defaults to `'programmatic'`. */
   source?: SelectionSource;
+}
+
+export interface UpdateOptions {
+  /** Write the committed model selection back to the DOM after reconcile. */
+  syncDomSelection?: boolean;
 }
 
 export interface CreateEditorOptions {
@@ -175,6 +181,11 @@ export class Editor {
 
   getDomForKey(key: NodeKey): HTMLElement | null {
     return this.reconciler.getDom(key);
+  }
+
+  /** @internal Mounted root for input and selection bridge code. */
+  getRootElement(): HTMLElement | null {
+    return this.root;
   }
 
   getEditorState(): EditorState {
@@ -345,7 +356,7 @@ export class Editor {
     };
   }
 
-  update(fn: (state: EditorState) => void) {
+  update(fn: (state: EditorState) => void, options: UpdateOptions = {}) {
     const wasUpdating = this.isUpdating;
     this.isUpdating = true;
     try {
@@ -359,12 +370,6 @@ export class Editor {
         });
       }
 
-      // Invalidate cached selection if structural mutations removed its
-      // anchor/focus nodes. This also covers the case where a caller inside
-      // the mutator staged a range that became stale by the end of the
-      // transaction - we still null it out so observers never see a
-      // dangling key. The next `selectionchange` from the browser, delivered
-      // via the sync plugin, refills the cache.
       this.maybeInvalidatePendingSelection(next);
 
       this.notifyUpdateListeners(prev, next);
@@ -373,11 +378,11 @@ export class Editor {
       this.isUpdating = wasUpdating;
     }
 
-    // Only the outermost update flushes selection. Nested updates keep their
-    // changes staged so the outer transaction observes a single post-commit
-    // selection value.
     if (!wasUpdating) {
       this.flushPendingSelection();
+      if (options.syncDomSelection && this.root && this.currentSelection) {
+        writeDomSelection(this, this.root, this.currentSelection);
+      }
     }
   }
 
@@ -502,11 +507,21 @@ export class Editor {
 
     this.registerCommand(
       INSERT_TEXT,
-      ({ text }) => {
+      ({ text, range }) => {
         if (!text) {
           return true;
         }
-        this.update((state) => state.insertText(text));
+        this.update(
+          (state) => {
+            if (range) {
+              const nextSelection = state.insertTextAtRange(range, text);
+              this.setSelection(nextSelection, { source: 'programmatic' });
+              return;
+            }
+            state.insertText(text);
+          },
+          { syncDomSelection: true },
+        );
         return true;
       },
       CommandPriority.Editor,
@@ -514,8 +529,20 @@ export class Editor {
 
     this.registerCommand(
       DELETE_CHARACTER,
-      ({ isBackward }) => {
-        this.update((state) => state.deleteCharacter(isBackward));
+      ({ isBackward, range }) => {
+        this.update(
+          (state) => {
+            if (range) {
+              const nextSelection = state.deleteCharacterAtRange(range, isBackward);
+              if (nextSelection) {
+                this.setSelection(nextSelection, { source: 'programmatic' });
+              }
+              return;
+            }
+            state.deleteCharacter(isBackward);
+          },
+          { syncDomSelection: true },
+        );
         return true;
       },
       CommandPriority.Editor,
@@ -523,8 +550,20 @@ export class Editor {
 
     this.registerCommand(
       INSERT_PARAGRAPH,
-      () => {
-        this.update((state) => state.insertParagraph());
+      ({ range }) => {
+        this.update(
+          (state) => {
+            if (range) {
+              const nextSelection = state.insertParagraphAtRange(range);
+              if (nextSelection) {
+                this.setSelection(nextSelection, { source: 'programmatic' });
+              }
+              return;
+            }
+            state.insertParagraph();
+          },
+          { syncDomSelection: true },
+        );
         return true;
       },
       CommandPriority.Editor,

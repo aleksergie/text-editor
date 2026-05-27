@@ -6,6 +6,7 @@ import {
 } from './commands';
 import { bindEditorEvents } from './editor-events';
 import { createEditor, Editor } from './editor';
+import { createTextRange } from './selection';
 
 function createBeforeInput(
   inputType: string,
@@ -18,6 +19,23 @@ function createBeforeInput(
     data: init.data ?? null,
     isComposing: init.isComposing ?? false,
   });
+}
+
+function getRenderedTextNode(root: HTMLElement): Text {
+  const text = root.querySelector('span')?.firstChild;
+  if (!text || text.nodeType !== Node.TEXT_NODE) {
+    throw new Error('expected rendered text node');
+  }
+  return text as Text;
+}
+
+function setCollapsedDomSelection(textNode: Text, offset: number): void {
+  const range = document.createRange();
+  range.setStart(textNode, offset);
+  range.collapse(true);
+  const selection = window.getSelection();
+  selection?.removeAllRanges();
+  selection?.addRange(range);
 }
 
 function mountEditor(): { editor: Editor; root: HTMLElement } {
@@ -73,7 +91,7 @@ describe('editor input events', () => {
     root.dispatchEvent(event);
 
     expect(event.defaultPrevented).toBe(true);
-    expect(payloads).toEqual([{ isBackward: true }]);
+    expect(payloads).toEqual([{ isBackward: true, range: null }]);
     expect(editor.read((state) => state.getText())).toBe('hell');
   });
 
@@ -94,7 +112,7 @@ describe('editor input events', () => {
     root.dispatchEvent(event);
 
     expect(event.defaultPrevented).toBe(true);
-    expect(payloads).toEqual([{ isBackward: false }]);
+    expect(payloads).toEqual([{ isBackward: false, range: null }]);
     expect(editor.read((state) => state.getText())).toBe('ello');
   });
 
@@ -171,64 +189,77 @@ describe('editor input events', () => {
     expect(editor.read((state) => state.getText())).toBe('browser text');
   });
 
-  it('places the caret at the end after a bridge-originated mutation', () => {
+  it('writes the caret after inserted text from the committed model selection', () => {
     const { root } = mountEditor();
+    const textNode = getRenderedTextNode(root);
+    setCollapsedDomSelection(textNode, 0);
 
     root.dispatchEvent(createBeforeInput('insertText', { data: 'a' }));
 
     const selection = window.getSelection();
     expect(selection?.rangeCount).toBe(1);
-    const range = selection?.getRangeAt(0);
-    expect(range?.collapsed).toBe(true);
-    expect(range?.endContainer).toBe(root);
-    expect(range?.endOffset).toBe(root.childNodes.length);
+    expect(selection?.anchorNode).toBe(textNode);
+    expect(selection?.anchorOffset).toBe(1);
   });
 
-  it('does not move the caret after an unhandled beforeinput followed by an unrelated update', () => {
+  it('inserts in the middle of a text node and keeps the caret after the inserted text', () => {
     const { editor, root } = mountEditor();
+    editor.update((state) => state.setText('abcdef'));
+    const textNode = getRenderedTextNode(root);
+    setCollapsedDomSelection(textNode, 3);
+
+    root.dispatchEvent(createBeforeInput('insertText', { data: 'X' }));
+
+    expect(editor.read((state) => state.getText())).toBe('abcXdef');
+    expect(editor.getSelection()?.anchor.offset).toBe(4);
+    expect(window.getSelection()?.anchorOffset).toBe(4);
+  });
+
+  it('replaces an expanded range and collapses after the replacement', () => {
+    const { editor, root } = mountEditor();
+    editor.update((state) => state.setText('hello world'));
+    const textNode = getRenderedTextNode(root);
+    const range = document.createRange();
+    range.setStart(textNode, 6);
+    range.setEnd(textNode, 11);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+
+    root.dispatchEvent(createBeforeInput('insertText', { data: 'there' }));
+
+    expect(editor.read((state) => state.getText())).toBe('hello there');
+    expect(editor.getSelection()?.anchor.offset).toBe(11);
+  });
+
+  it('does not write DOM selection after programmatic SET_TEXT_CONTENT', () => {
+    const { editor, root } = mountEditor();
+    editor.update((state) => state.setText('hello'));
+    const textNode = getRenderedTextNode(root);
+    const cachedRange = createTextRange(
+      { key: 't1', offset: 2 },
+      { key: 't1', offset: 2 },
+      false,
+    );
+    editor.setSelection(cachedRange);
+    setCollapsedDomSelection(textNode, 2);
     const getSelection = jest.spyOn(window, 'getSelection');
 
-    root.dispatchEvent(createBeforeInput('insertFromPaste', { data: 'x' }));
-    editor.dispatchCommand(SET_TEXT_CONTENT, 'programmatic');
+    editor.dispatchCommand(SET_TEXT_CONTENT, 'changed');
 
     expect(getSelection).not.toHaveBeenCalled();
+    expect(editor.getSelection()?.anchor.offset).toBe(2);
   });
 
-  it('uses the root owner document when placing the caret', () => {
-    const editor = createEditor();
-    const beforeInputListeners: Array<(event: InputEvent) => void> = [];
-    const selection = {
-      removeAllRanges: jest.fn(),
-      addRange: jest.fn(),
-    };
-    const range = {
-      selectNodeContents: jest.fn(),
-      collapse: jest.fn(),
-    };
-    const ownerDocument = {
-      defaultView: { getSelection: jest.fn(() => selection) },
-      createRange: jest.fn(() => range),
-    };
-    const root = {
-      ownerDocument,
-      innerText: '',
-      addEventListener: jest.fn((type: string, listener: (event: InputEvent) => void) => {
-        if (type === 'beforeinput') {
-          beforeInputListeners.push(listener);
-        }
-      }),
-      removeEventListener: jest.fn(),
-    } as unknown as HTMLElement;
-    const teardown = bindEditorEvents(editor, root);
+  it('uses the root owner document when writing DOM selection', () => {
+    const { root } = mountEditor();
+    const textNode = getRenderedTextNode(root);
+    setCollapsedDomSelection(textNode, 0);
+    const ownerDocument = root.ownerDocument;
+    const getSelection = jest.spyOn(ownerDocument.defaultView!, 'getSelection');
 
-    beforeInputListeners[0](createBeforeInput('insertText', { data: 'a' }));
+    root.dispatchEvent(createBeforeInput('insertText', { data: 'a' }));
 
-    expect(ownerDocument.defaultView.getSelection).toHaveBeenCalled();
-    expect(ownerDocument.createRange).toHaveBeenCalled();
-    expect(range.selectNodeContents).toHaveBeenCalledWith(root);
-    expect(selection.addRange).toHaveBeenCalledWith(range);
-
-    teardown();
+    expect(getSelection).toHaveBeenCalled();
   });
 
   it('removes listeners on setRoot(null)', () => {
@@ -253,5 +284,20 @@ describe('editor input events', () => {
     nextRoot.dispatchEvent(createBeforeInput('insertText', { data: 'new' }));
 
     expect(editor.read((state) => state.getText())).toBe('new');
+  });
+
+  it('ignores native selection outside the current root during input routing', () => {
+    const { editor, root } = mountEditor();
+    editor.update((state) => state.setText('abcdef'));
+    const staleTextNode = getRenderedTextNode(root);
+
+    const nextRoot = document.createElement('div');
+    document.body.appendChild(nextRoot);
+    editor.setRoot(nextRoot);
+    setCollapsedDomSelection(staleTextNode, 1);
+
+    nextRoot.dispatchEvent(createBeforeInput('insertText', { data: 'X' }));
+
+    expect(editor.read((state) => state.getText())).toBe('abcdefX');
   });
 });

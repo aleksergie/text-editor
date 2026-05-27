@@ -77,6 +77,41 @@ export function insertAfter(nodeMap: NodeMap, target: NodeBase, nodeToInsert: No
   parent.__size += 1;
 }
 
+export function insertBefore(nodeMap: NodeMap, target: NodeBase, nodeToInsert: NodeBase) {
+  if (target === nodeToInsert) {
+    return;
+  }
+
+  const parent = getParentElement(nodeMap, target);
+  if (!parent) {
+    return;
+  }
+
+  if (nodeToInsert.__parent) {
+    remove(nodeMap, nodeToInsert);
+  }
+
+  const prevKey = target.__prev;
+  const insertKey = nodeToInsert.__key;
+
+  nodeToInsert.__parent = parent.__key;
+  nodeToInsert.__prev = prevKey;
+  nodeToInsert.__next = target.__key;
+
+  target.__prev = insertKey;
+
+  if (prevKey) {
+    const prev = nodeMap.get(prevKey);
+    if (prev) {
+      prev.__next = insertKey;
+    }
+  } else {
+    parent.__first = insertKey;
+  }
+
+  parent.__size += 1;
+}
+
 export function remove(nodeMap: NodeMap, node: NodeBase) {
   const parent = getParentElement(nodeMap, node);
   if (!parent) {

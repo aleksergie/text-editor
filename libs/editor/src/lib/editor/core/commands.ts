@@ -66,17 +66,17 @@ export function createCommand<TPayload = void>(type: string): EditorCommand<TPay
 export const BEFORE_INPUT_COMMAND: EditorCommand<InputEvent> =
   createCommand<InputEvent>('BEFORE_INPUT_COMMAND');
 
-/** Insert text at the current (v1 DOM-derived) insertion point. */
-export const INSERT_TEXT: EditorCommand<{ text: string }> =
-  createCommand<{ text: string }>('INSERT_TEXT');
+/** Insert text at the current selection, or append when no range is supplied. */
+export const INSERT_TEXT: EditorCommand<{ text: string; range: TextRange | null }> =
+  createCommand<{ text: string; range: TextRange | null }>('INSERT_TEXT');
 
-/** Delete one character. `isBackward` mirrors the browser's `deleteContentBackward`. */
-export const DELETE_CHARACTER: EditorCommand<{ isBackward: boolean }> =
-  createCommand<{ isBackward: boolean }>('DELETE_CHARACTER');
+/** Delete one character relative to the current selection. */
+export const DELETE_CHARACTER: EditorCommand<{ isBackward: boolean; range: TextRange | null }> =
+  createCommand<{ isBackward: boolean; range: TextRange | null }>('DELETE_CHARACTER');
 
-/** Insert a new empty paragraph at the end of the document (v1 scope). */
-export const INSERT_PARAGRAPH: EditorCommand<void> =
-  createCommand<void>('INSERT_PARAGRAPH');
+/** Insert a paragraph at the current selection. */
+export const INSERT_PARAGRAPH: EditorCommand<{ range: TextRange | null }> =
+  createCommand<{ range: TextRange | null }>('INSERT_PARAGRAPH');
 
 /** Replace the document's text content (non-structural). */
 export const SET_TEXT_CONTENT: EditorCommand<string> =

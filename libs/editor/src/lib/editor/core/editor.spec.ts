@@ -451,15 +451,15 @@ describe('Editor v1 core commands', () => {
 
   describe('INSERT_TEXT', () => {
     it('appends text to the document tail', () => {
-      editor.dispatchCommand(INSERT_TEXT, { text: 'hel' });
-      editor.dispatchCommand(INSERT_TEXT, { text: 'lo' });
+      editor.dispatchCommand(INSERT_TEXT, { text: 'hel', range: null });
+      editor.dispatchCommand(INSERT_TEXT, { text: 'lo', range: null });
 
       expect(editor.read((s) => s.getText())).toBe('hello');
     });
 
     it('is a no-op for empty text', () => {
       const before = editor.getEditorState();
-      editor.dispatchCommand(INSERT_TEXT, { text: '' });
+      editor.dispatchCommand(INSERT_TEXT, { text: '', range: null });
 
       expect(editor.getEditorState()).toBe(before);
     });
@@ -468,20 +468,20 @@ describe('Editor v1 core commands', () => {
   describe('DELETE_CHARACTER', () => {
     it('removes the last character when isBackward=true', () => {
       editor.dispatchCommand(SET_TEXT_CONTENT, 'hello');
-      editor.dispatchCommand(DELETE_CHARACTER, { isBackward: true });
+      editor.dispatchCommand(DELETE_CHARACTER, { isBackward: true, range: null });
 
       expect(editor.read((s) => s.getText())).toBe('hell');
     });
 
     it('removes the first character when isBackward=false', () => {
       editor.dispatchCommand(SET_TEXT_CONTENT, 'hello');
-      editor.dispatchCommand(DELETE_CHARACTER, { isBackward: false });
+      editor.dispatchCommand(DELETE_CHARACTER, { isBackward: false, range: null });
 
       expect(editor.read((s) => s.getText())).toBe('ello');
     });
 
     it('is a no-op on an empty document', () => {
-      editor.dispatchCommand(DELETE_CHARACTER, { isBackward: true });
+      editor.dispatchCommand(DELETE_CHARACTER, { isBackward: true, range: null });
       expect(editor.read((s) => s.getText())).toBe('');
     });
   });
@@ -489,8 +489,8 @@ describe('Editor v1 core commands', () => {
   describe('INSERT_PARAGRAPH', () => {
     it('appends a new empty paragraph to the document', () => {
       editor.dispatchCommand(SET_TEXT_CONTENT, 'first');
-      editor.dispatchCommand(INSERT_PARAGRAPH, undefined);
-      editor.dispatchCommand(INSERT_TEXT, { text: 'second' });
+      editor.dispatchCommand(INSERT_PARAGRAPH, { range: null });
+      editor.dispatchCommand(INSERT_TEXT, { text: 'second', range: null });
 
       expect(editor.read((s) => s.getText())).toBe('firstsecond');
 

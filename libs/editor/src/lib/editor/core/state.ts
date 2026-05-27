@@ -8,10 +8,11 @@ import {
   $isElementNode,
   $isTextNode,
   insertAfter as insertAfterUtil,
+  insertBefore as insertBeforeUtil,
   remove as removeUtil,
   replace as replaceUtil,
 } from './nodes/node-utils';
-import { TextRange, getRangeStartEnd } from './selection';
+import { TextRange, TextPoint, createTextRange, getRangeStartEnd } from './selection';
 import {
   EditorStateSnapshot,
   InvalidSnapshotError,
@@ -92,6 +93,17 @@ export class EditorState {
   }
 
   /**
+   * Structural helper: insert `node` before `target` under the same parent.
+   */
+  insertBefore(target: NodeBase, node: NodeBase) {
+    this.registerNode(node);
+    insertBeforeUtil(this.nodes, target, node);
+    if (node.parent) {
+      this.markDirty(node.parent);
+    }
+  }
+
+  /**
    * Structural helper: remove `node` from its parent.
    */
   remove(node: NodeBase) {
@@ -101,6 +113,15 @@ export class EditorState {
       this.markDirty(parentKey);
     }
     this.nodes.delete(node.key);
+  }
+
+  /** Unlink `node` from its parent without removing it from the node map. */
+  private detach(node: NodeBase) {
+    const parentKey = node.parent;
+    removeUtil(this.nodes, node);
+    if (parentKey) {
+      this.markDirty(parentKey);
+    }
   }
 
   /**
@@ -242,17 +263,258 @@ export class EditorState {
    * selection-aware splitting yet).
    */
   insertParagraph() {
-    const paragraph = $createParagraphNode(createNodeKey());
-    const text = $createTextNode(createNodeKey(), '');
-    this.registerNode(paragraph);
-    this.registerNode(text);
-    paragraph.append(this.nodes, text);
-
-    const root = this.nodes.get(this.rootKey);
-    if ($isElementNode(root)) {
-      root.append(this.nodes, paragraph);
-      this.markDirty(this.rootKey);
+    const lastText = this.getLastTextNode();
+    if (!lastText) {
+      return;
     }
+    this.insertParagraphAtRange(
+      createTextRange(
+        { key: lastText.key, offset: lastText.text.length },
+        { key: lastText.key, offset: lastText.text.length },
+        false,
+      ),
+    );
+  }
+
+  /**
+   * Insert `text` at `range`, replacing an expanded selection when present.
+   * Returns the collapsed post-insert selection.
+   */
+  insertTextAtRange(range: TextRange, text: string): TextRange {
+    if (text.length === 0) {
+      return range;
+    }
+
+    let workingRange = range;
+    if (!range.isCollapsed) {
+      const collapsePoint = this.deleteTextInRange(range);
+      workingRange = createTextRange(collapsePoint, collapsePoint, false);
+    }
+
+    const point = workingRange.anchor;
+    const node = this.nodes.get(point.key);
+    if (!$isTextNode(node)) {
+      return workingRange;
+    }
+
+    const clampedOffset = Math.min(Math.max(point.offset, 0), node.text.length);
+    const before = node.text.slice(0, clampedOffset);
+    const after = node.text.slice(clampedOffset);
+    node.text = before + text + after;
+    this.markDirty(node.key);
+
+    const newOffset = clampedOffset + text.length;
+    const nextPoint: TextPoint = { key: node.key, offset: newOffset };
+    return createTextRange(nextPoint, nextPoint, false);
+  }
+
+  /**
+   * Delete one character relative to `range`. Expanded ranges are cleared
+   * first; collapsed ranges delete before/after the caret.
+   */
+  deleteCharacterAtRange(range: TextRange, isBackward: boolean): TextRange | null {
+    if (!range.isCollapsed) {
+      const collapsePoint = this.deleteTextInRange(range);
+      return createTextRange(collapsePoint, collapsePoint, false);
+    }
+
+    const point = range.anchor;
+    const node = this.nodes.get(point.key);
+    if (!$isTextNode(node)) {
+      return null;
+    }
+
+    const clampedOffset = Math.min(Math.max(point.offset, 0), node.text.length);
+
+    if (isBackward) {
+      if (clampedOffset > 0) {
+        node.text = node.text.slice(0, clampedOffset - 1) + node.text.slice(clampedOffset);
+        this.markDirty(node.key);
+        const nextPoint: TextPoint = { key: node.key, offset: clampedOffset - 1 };
+        return createTextRange(nextPoint, nextPoint, false);
+      }
+      const previousText = this.previousTextNodeInBlock(node);
+      if (previousText) {
+        const nextOffset = Math.max(previousText.text.length - 1, 0);
+        if (previousText.text.length > 0) {
+          previousText.text = previousText.text.slice(0, -1);
+          this.markDirty(previousText.key);
+        }
+        const nextPoint: TextPoint = { key: previousText.key, offset: nextOffset };
+        return createTextRange(nextPoint, nextPoint, false);
+      }
+      return this.mergeWithPreviousParagraph(node);
+    }
+
+    if (clampedOffset < node.text.length) {
+      node.text = node.text.slice(0, clampedOffset) + node.text.slice(clampedOffset + 1);
+      this.markDirty(node.key);
+      const nextPoint: TextPoint = { key: node.key, offset: clampedOffset };
+      return createTextRange(nextPoint, nextPoint, false);
+    }
+    const nextText = this.nextTextNodeInBlock(node);
+    if (nextText) {
+      if (nextText.text.length > 0) {
+        nextText.text = nextText.text.slice(1);
+        this.markDirty(nextText.key);
+      }
+      const nextPoint: TextPoint = { key: node.key, offset: clampedOffset };
+      return createTextRange(nextPoint, nextPoint, false);
+    }
+    return this.mergeWithNextParagraph(node);
+  }
+
+  /**
+   * Split or insert a paragraph at `range`. Expanded ranges are cleared
+   * first. Returns the collapsed selection inside the new paragraph.
+   */
+  insertParagraphAtRange(range: TextRange): TextRange | null {
+    let workingRange = range;
+    if (!range.isCollapsed) {
+      const collapsePoint = this.deleteTextInRange(range);
+      workingRange = createTextRange(collapsePoint, collapsePoint, false);
+    }
+
+    const point = workingRange.anchor;
+    const textNode = this.nodes.get(point.key);
+    if (!$isTextNode(textNode) || !textNode.parent) {
+      return null;
+    }
+
+    const paragraph = this.nodes.get(textNode.parent);
+    if (!$isElementNode(paragraph)) {
+      return null;
+    }
+
+    const clampedOffset = Math.min(Math.max(point.offset, 0), textNode.text.length);
+    const previousText = this.previousTextNodeInBlock(textNode);
+    const nextText = this.nextTextNodeInBlock(textNode);
+
+    if (clampedOffset === 0 && previousText) {
+      return this.splitParagraphBeforeTextNode(paragraph, textNode);
+    }
+
+    if (clampedOffset === 0) {
+      const { paragraph: newParagraph, text: newText } = this.createEmptyParagraph();
+      this.insertBefore(paragraph, newParagraph);
+      this.markDirty(this.rootKey);
+      return createTextRange(
+        { key: newText.key, offset: 0 },
+        { key: newText.key, offset: 0 },
+        false,
+      );
+    }
+
+    if (clampedOffset >= textNode.text.length && nextText) {
+      return this.splitParagraphBeforeTextNode(paragraph, nextText);
+    }
+
+    if (clampedOffset >= textNode.text.length) {
+      const { paragraph: newParagraph, text: newText } = this.createEmptyParagraph();
+      this.insertAfter(paragraph, newParagraph);
+      this.markDirty(this.rootKey);
+      return createTextRange(
+        { key: newText.key, offset: 0 },
+        { key: newText.key, offset: 0 },
+        false,
+      );
+    }
+
+    const { right } = this.splitTextNodeAt(textNode, clampedOffset);
+    const newParagraph = $createParagraphNode(createNodeKey());
+    this.registerNode(newParagraph);
+    this.insertAfter(paragraph, newParagraph);
+    this.markDirty(this.rootKey);
+
+    if (right) {
+      this.moveNodeAndFollowingSiblings(right, newParagraph);
+      const selectionTarget = this.getFirstTextNodeInBlock(newParagraph);
+      if (!selectionTarget) {
+        return null;
+      }
+      return createTextRange(
+        { key: selectionTarget.key, offset: 0 },
+        { key: selectionTarget.key, offset: 0 },
+        false,
+      );
+    }
+
+    const emptyText = $createTextNode(createNodeKey(), '');
+    this.registerNode(emptyText);
+    newParagraph.append(this.nodes, emptyText);
+    this.markDirty(newParagraph.key);
+    return createTextRange(
+      { key: emptyText.key, offset: 0 },
+      { key: emptyText.key, offset: 0 },
+      false,
+    );
+  }
+
+  /**
+   * Delete the text covered by `range` and return the collapse point at the
+   * start of the deleted span.
+   */
+  deleteTextInRange(range: TextRange): TextPoint {
+    const { start, end } = getRangeStartEnd(range);
+    if (start.key === end.key && start.offset === end.offset) {
+      return start;
+    }
+
+    const startNode = this.nodes.get(start.key);
+    const endNode = this.nodes.get(end.key);
+    if (!$isTextNode(startNode) || !$isTextNode(endNode)) {
+      return start;
+    }
+
+    const startOffset = Math.min(Math.max(start.offset, 0), startNode.text.length);
+    const endOffset = Math.min(Math.max(end.offset, 0), endNode.text.length);
+
+    if (startNode === endNode) {
+      startNode.text = startNode.text.slice(0, startOffset) + startNode.text.slice(endOffset);
+      this.markDirty(startNode.key);
+      return { key: startNode.key, offset: startOffset };
+    }
+
+    const prefix = startNode.text.slice(0, startOffset);
+    const suffix = endNode.text.slice(endOffset);
+    const covered = this.collectTextNodesBetween(startNode, endNode);
+    const startParentKey = startNode.parent;
+    const endParentKey = endNode.parent;
+    const nextAfterEnd = this.nextTextNodeInBlock(endNode);
+
+    for (const coveredNode of covered) {
+      if (coveredNode !== startNode && coveredNode !== endNode) {
+        this.remove(coveredNode);
+      }
+    }
+
+    startNode.text = prefix;
+    this.markDirty(startNode.key);
+
+    let firstMovedAfterRange: TextNode | null = null;
+    if (suffix.length > 0) {
+      endNode.text = suffix;
+      this.markDirty(endNode.key);
+      firstMovedAfterRange = endNode;
+    } else {
+      firstMovedAfterRange = nextAfterEnd;
+      this.remove(endNode);
+    }
+
+    if (startParentKey && endParentKey && startParentKey !== endParentKey) {
+      const startParent = this.nodes.get(startParentKey);
+      if (
+        $isElementNode(startParent) &&
+        firstMovedAfterRange &&
+        firstMovedAfterRange.parent === endParentKey
+      ) {
+        this.moveNodeAndFollowingSiblings(firstMovedAfterRange, startParent);
+      }
+    }
+
+    this.mergeForwardSameFormatRuns(startNode);
+    this.removeEmptyParagraphs();
+    return { key: startNode.key, offset: startOffset };
   }
 
   /**
@@ -384,6 +646,30 @@ export class EditorState {
     return idx > 0 ? all[idx - 1] : null;
   }
 
+  private previousTextNodeInBlock(node: TextNode): TextNode | null {
+    let previousKey = node.__prev;
+    while (previousKey) {
+      const previous = this.nodes.get(previousKey);
+      if ($isTextNode(previous) && previous.parent === node.parent) {
+        return previous;
+      }
+      previousKey = previous?.__prev ?? null;
+    }
+    return null;
+  }
+
+  private nextTextNodeInBlock(node: TextNode): TextNode | null {
+    let nextKey = node.__next;
+    while (nextKey) {
+      const next = this.nodes.get(nextKey);
+      if ($isTextNode(next) && next.parent === node.parent) {
+        return next;
+      }
+      nextKey = next?.__next ?? null;
+    }
+    return null;
+  }
+
   private collectTextNodesBetween(startNode: TextNode, endNode: TextNode): TextNode[] {
     if (startNode === endNode) {
       return [startNode];
@@ -395,6 +681,197 @@ export class EditorState {
       return [];
     }
     return all.slice(startIdx, endIdx + 1);
+  }
+
+  private createEmptyParagraph(): { paragraph: ElementNode; text: TextNode } {
+    const paragraph = $createParagraphNode(createNodeKey());
+    const text = $createTextNode(createNodeKey(), '');
+    this.registerNode(paragraph);
+    this.registerNode(text);
+    paragraph.append(this.nodes, text);
+    return { paragraph, text };
+  }
+
+  private splitParagraphBeforeTextNode(
+    paragraph: ElementNode,
+    firstNodeInNewParagraph: TextNode,
+  ): TextRange | null {
+    const newParagraph = $createParagraphNode(createNodeKey());
+    this.registerNode(newParagraph);
+    this.insertAfter(paragraph, newParagraph);
+    this.markDirty(this.rootKey);
+
+    this.moveNodeAndFollowingSiblings(firstNodeInNewParagraph, newParagraph);
+    const selectionTarget = this.getFirstTextNodeInBlock(newParagraph);
+    if (!selectionTarget) {
+      return null;
+    }
+    return createTextRange(
+      { key: selectionTarget.key, offset: 0 },
+      { key: selectionTarget.key, offset: 0 },
+      false,
+    );
+  }
+
+  private mergeWithPreviousParagraph(textNode: TextNode): TextRange | null {
+    const paragraph = textNode.parent ? this.nodes.get(textNode.parent) : null;
+    if (!$isElementNode(paragraph)) {
+      return null;
+    }
+
+    const previousParagraph = this.getPreviousBlock(paragraph);
+    if (!previousParagraph) {
+      return createTextRange(
+        { key: textNode.key, offset: 0 },
+        { key: textNode.key, offset: 0 },
+        false,
+      );
+    }
+
+    const previousLastText = this.getLastTextNodeInBlock(previousParagraph);
+    if (!previousLastText) {
+      return null;
+    }
+
+    const mergeOffset = previousLastText.text.length;
+    const movedTextNodes = this.moveAllChildren(paragraph, previousParagraph);
+    this.remove(paragraph);
+    this.markDirty(this.rootKey);
+
+    if (movedTextNodes.length > 0) {
+      this.mergeForwardSameFormatRuns(previousLastText);
+    }
+
+    const nextPoint: TextPoint = { key: previousLastText.key, offset: mergeOffset };
+    return createTextRange(nextPoint, nextPoint, false);
+  }
+
+  private mergeWithNextParagraph(textNode: TextNode): TextRange | null {
+    const paragraph = textNode.parent ? this.nodes.get(textNode.parent) : null;
+    if (!$isElementNode(paragraph)) {
+      return null;
+    }
+
+    const nextParagraph = this.getNextBlock(paragraph);
+    if (!nextParagraph) {
+      return createTextRange(
+        { key: textNode.key, offset: textNode.text.length },
+        { key: textNode.key, offset: textNode.text.length },
+        false,
+      );
+    }
+
+    const mergeOffset = textNode.text.length;
+    const movedTextNodes = this.moveAllChildren(nextParagraph, paragraph);
+    this.remove(nextParagraph);
+    this.markDirty(this.rootKey);
+
+    if (movedTextNodes.length > 0) {
+      this.mergeForwardSameFormatRuns(textNode);
+    }
+
+    const nextPoint: TextPoint = { key: textNode.key, offset: mergeOffset };
+    return createTextRange(nextPoint, nextPoint, false);
+  }
+
+  private getPreviousBlock(block: ElementNode): ElementNode | null {
+    if (!block.__prev) {
+      return null;
+    }
+    const previous = this.nodes.get(block.__prev);
+    return $isElementNode(previous) ? previous : null;
+  }
+
+  private getNextBlock(block: ElementNode): ElementNode | null {
+    if (!block.__next) {
+      return null;
+    }
+    const next = this.nodes.get(block.__next);
+    return $isElementNode(next) ? next : null;
+  }
+
+  private getFirstTextNodeInBlock(block: ElementNode): TextNode | null {
+    let textKey = block.__first;
+    while (textKey) {
+      const node = this.nodes.get(textKey);
+      if ($isTextNode(node)) {
+        return node;
+      }
+      textKey = node?.__next ?? null;
+    }
+    return null;
+  }
+
+  private getLastTextNodeInBlock(block: ElementNode): TextNode | null {
+    let textKey = block.__last;
+    while (textKey) {
+      const node = this.nodes.get(textKey);
+      if ($isTextNode(node)) {
+        return node;
+      }
+      textKey = node?.__prev ?? null;
+    }
+    return null;
+  }
+
+  private moveNodeAndFollowingSiblings(startNode: NodeBase, destination: ElementNode): TextNode[] {
+    const movedTextNodes: TextNode[] = [];
+    let cursor: NodeBase | undefined = startNode;
+
+    while (cursor) {
+      const nextKey: NodeKey | null = cursor.__next;
+      this.detach(cursor);
+      destination.append(this.nodes, cursor);
+      this.markDirty(destination.key);
+      if ($isTextNode(cursor)) {
+        movedTextNodes.push(cursor);
+      }
+      cursor = nextKey ? this.nodes.get(nextKey) : undefined;
+    }
+
+    return movedTextNodes;
+  }
+
+  private moveAllChildren(source: ElementNode, destination: ElementNode): TextNode[] {
+    const firstChild = source.__first ? this.nodes.get(source.__first) : undefined;
+    if (!firstChild) {
+      return [];
+    }
+    return this.moveNodeAndFollowingSiblings(firstChild, destination);
+  }
+
+  private removeEmptyParagraphs(): void {
+    const root = this.nodes.get(this.rootKey);
+    if (!$isElementNode(root)) {
+      return;
+    }
+
+    let blockKey = root.__first;
+    while (blockKey) {
+      const block = this.nodes.get(blockKey);
+      const nextKey = block?.__next ?? null;
+      if ($isElementNode(block) && block.__size === 0 && root.__size > 1) {
+        this.remove(block);
+        this.markDirty(this.rootKey);
+      }
+      blockKey = nextKey;
+    }
+  }
+
+  private mergeForwardSameFormatRuns(anchor: TextNode): void {
+    while (this.nodes.has(anchor.key)) {
+      const next = anchor.next ? this.nodes.get(anchor.next) : null;
+      if (
+        !$isTextNode(next) ||
+        next.parent !== anchor.parent ||
+        next.format !== anchor.format
+      ) {
+        return;
+      }
+      anchor.text = anchor.text + next.text;
+      this.markDirty(anchor.key);
+      this.remove(next);
+    }
   }
 
   /**

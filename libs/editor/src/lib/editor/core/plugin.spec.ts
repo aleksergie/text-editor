@@ -59,9 +59,9 @@ describe('EditorPluginContext', () => {
     const handler = jest.fn().mockReturnValue(true);
 
     registerCommand(INSERT_TEXT, handler, CommandPriority.High);
-    dispatchCommand(INSERT_TEXT, { text: 'hi' });
+    dispatchCommand(INSERT_TEXT, { text: 'hi', range: null });
 
-    expect(handler).toHaveBeenCalledWith({ text: 'hi' });
+    expect(handler).toHaveBeenCalledWith({ text: 'hi', range: null });
   });
 });
 

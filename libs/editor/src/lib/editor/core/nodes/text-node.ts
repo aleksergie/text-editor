@@ -144,7 +144,7 @@ export class TextNode extends NodeBase {
  * child HTML text node holding the user text. Returns `null` if the structure
  * is unexpected (which would force a full re-render via updateDOM path).
  */
-function getInnermostTextHolder(host: HTMLElement): Node | null {
+export function getInnermostTextHolder(host: HTMLElement): Node | null {
   let cursor: Node = host;
   while (cursor.firstChild) {
     const child: Node = cursor.firstChild;
