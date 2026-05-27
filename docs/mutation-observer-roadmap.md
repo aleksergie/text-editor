@@ -2,11 +2,9 @@
 
 ## Status
 
-Future work. Not started. This note describes how to add a defensive
-`MutationObserver` to the core editor so the model survives DOM writes that
-the editor did not author: spell-check, autocorrect, IME composition,
-default `contenteditable` behavior, and DOM-mutating browser extensions
-(Grammarly, LanguageTool, 1Password, accessibility tooling).
+Phase 1 shipped (2026-05-27). Phases 2–5 are future work. Phase 1 adds
+observer scaffolding and the reconciler pause/resume contract without
+changing editing behavior.
 
 The design mirrors the shape Lexical uses in `LexicalMutations.ts`. Where
 Lexical's implementation is a good fit, copying it is preferable to
@@ -212,6 +210,8 @@ lands.
 
 ### Phase 1 - Scaffolding And Reconciler Pause Contract
 
+**Status: Shipped (2026-05-27).**
+
 Goal: introduce the observer infrastructure without any defensive
 behavior. The observer logs mutations for debugging only; the editor runs
 unchanged.
@@ -296,6 +296,12 @@ Acceptance:
   injected node inside a known text host returns `null` from
   `keyForExactDomNode` even though `keyForDomNode` / nearest pair can
   resolve the host.
+
+**Decisions taken (Phase 1):**
+
+1. **Plugin vs core placement.** Observer lives in core; see ADR-003.
+2. **Managed line breaks.** Not applicable until `LineBreakNode` lands;
+   unchanged from open question #2 below.
 
 ### Phase 2 - CharacterData Handling
 
@@ -593,11 +599,12 @@ These should be resolved by the agent picking up phase 1 before phase 2
 starts. Capture decisions in this doc inline (the same pattern
 `docs/selection-state-design.md` uses).
 
-1. **Plugin vs core placement.** Phase 1 puts the observer in core,
+1. **Plugin vs core placement.** ~~Phase 1 puts the observer in core,
    mirroring ADR-002's reasoning for input listeners (the disconnect /
    reconnect contract is tightly coupled to `Reconciler.update`).
    Confirm the same reasoning applies, or write a follow-up ADR if the
-   observer should live in a `DomDefensePlugin` instead.
+   observer should live in a `DomDefensePlugin` instead.~~ **Resolved:**
+   core placement confirmed; see ADR-003.
 2. **Managed line breaks.** Lexical's defense distinguishes "managed
    `<br>`" from "foreign `<br>`". We do not yet have managed line breaks
    (`LineBreakNode` is not implemented). Phase 3 treats every

@@ -121,4 +121,38 @@ describe('Reconciler', () => {
       expect(() => reconciler.update(rootEl, prev, next)).not.toThrow();
     });
   });
+
+  describe('keyForExactDomNode', () => {
+    it('returns null for an exact foreign child inside a managed host', () => {
+      const state = buildState([[{ key: 't1', text: 'hello' }]]);
+      reconciler.mount(rootEl, state);
+      const span = rootEl.children[0].children[0];
+      const foreign = document.createElement('font');
+      span.appendChild(foreign);
+
+      expect(reconciler.keyForExactDomNode(foreign)).toBeNull();
+      expect(reconciler.keyForDomNode(foreign)).toBe('t1');
+    });
+
+    it('returns the key for an exact registered host', () => {
+      const state = buildState([[{ key: 't1', text: 'hello' }]]);
+      reconciler.mount(rootEl, state);
+      const span = rootEl.children[0].children[0];
+
+      expect(reconciler.keyForExactDomNode(span)).toBe('t1');
+      expect(reconciler.isManagedDomNode(span)).toBe(true);
+      expect(reconciler.isManagedDomNode(document.createElement('div'))).toBe(false);
+    });
+
+    it('nearestManagedDomPair returns the host element for nested text', () => {
+      const state = buildState([[{ key: 't1', text: 'hello' }]]);
+      reconciler.mount(rootEl, state);
+      const span = rootEl.children[0].children[0];
+      const textNode = span.firstChild;
+      expect(textNode?.nodeType).toBe(Node.TEXT_NODE);
+
+      const pair = reconciler.nearestManagedDomPair(textNode);
+      expect(pair).toEqual({ dom: span, key: 't1' });
+    });
+  });
 });

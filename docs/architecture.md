@@ -288,11 +288,12 @@ plugins, and mounts/unmounts the DOM root.
 
 ## System Properties Worth Preserving
 
-- **Core owns input bridging only.** Beyond `setRoot` and the
-`beforeinput`/`composition`/`input` listeners that translate user keystrokes
-into commands, no other DOM event listeners live in `core/`. Selection sync,
-formatting shortcuts, and clipboard handling all go through plugins that own
-the DOM-event contract. See ADR-002.
+- **Core owns input bridging and mutation observation.** Beyond `setRoot`,
+the `beforeinput`/`composition`/`input` listeners that translate user
+keystrokes into commands, and the `MutationObserver` that will defend
+against foreign DOM writes, no other DOM event listeners live in `core`.
+Selection sync, formatting shortcuts, and clipboard handling all go through
+plugins that own the DOM-event contract. See ADR-002 and ADR-003.
 - **Plugins use only `EditorPluginContext`.** No plugin reaches into the
 raw `Editor`. This is what lets the plugin API evolve without breaking
 existing plugins.

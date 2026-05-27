@@ -11,6 +11,7 @@ import {
   INSERT_TEXT,
   SET_TEXT_CONTENT,
 } from './commands';
+import { DomObserver, DomObserverCallback } from './dom-observer';
 import { bindEditorEvents, registerInputCommandHandlers } from './editor-events';
 import { NodeKey } from './nodes/node';
 import { $isTextNode } from './nodes/node-utils';
@@ -56,13 +57,21 @@ export interface SetSelectionOptions {
   source?: SelectionSource;
 }
 
-export function createEditor(): Editor {
-  return new Editor();
+export interface CreateEditorOptions {
+  /** @internal Tests may supply a mutation callback to assert observer wiring. */
+  domObserverCallback?: DomObserverCallback;
 }
+
+export function createEditor(options?: CreateEditorOptions): Editor {
+  return new Editor(options);
+}
+
+const DEBUG_OBSERVER = false;
 
 export class Editor {
   private state = EditorState.createEmpty();
   private reconciler = new Reconciler();
+  private domObserver: DomObserver;
   private root: HTMLElement | null = null;
   private inputEventsTeardown: (() => void) | null = null;
   private commandHandlers = new Map<EditorCommand<unknown>, HandlerEntry[]>();
@@ -89,7 +98,11 @@ export class Editor {
   private pendingSelection: PendingSelection | undefined;
   private isUpdating = false;
 
-  constructor() {
+  constructor(options?: CreateEditorOptions) {
+    this.domObserver = new DomObserver(
+      options?.domObserverCallback ??
+        ((mutations, takeRecords) => this.handleDomMutations(mutations, takeRecords)),
+    );
     this.registerDefaultHandlers();
     registerInputCommandHandlers(this);
   }
@@ -100,12 +113,35 @@ export class Editor {
     }
     this.inputEventsTeardown?.();
     this.inputEventsTeardown = null;
+    this.domObserver.stop();
     this.root = root;
     if (root) {
-      this.reconciler.mount(root, this.state);
+      this.runWithObserverPaused(() => {
+        this.reconciler.mount(root, this.state);
+      });
+      this.domObserver.start(root);
       this.inputEventsTeardown = bindEditorEvents(this, root);
     }
     this.notifyRootListeners(root);
+  }
+
+  /**
+   * Run a DOM write with the mutation observer paused. Used by the
+   * reconciler, future DOM selection writers, and mutation-defense cleanup.
+   * Not exported from the public package barrel.
+   */
+  runWithObserverPaused<T>(fn: () => T): T {
+    this.domObserver.pause();
+    try {
+      return fn();
+    } finally {
+      this.domObserver.resume();
+    }
+  }
+
+  /** Discard observer records after mutation-defense DOM cleanup. */
+  drainObserverRecords(): void {
+    this.domObserver.drain();
   }
 
   /**
@@ -133,6 +169,10 @@ export class Editor {
     return this.reconciler.keyForDomNode(node);
   }
 
+  keyForExactDomNode(node: Node | null): NodeKey | null {
+    return this.reconciler.keyForExactDomNode(node);
+  }
+
   getDomForKey(key: NodeKey): HTMLElement | null {
     return this.reconciler.getDom(key);
   }
@@ -148,7 +188,9 @@ export class Editor {
     }
     this.state = state;
     if (this.root) {
-      this.reconciler.update(this.root, prev, state);
+      this.runWithObserverPaused(() => {
+        this.reconciler.update(this.root!, prev, state);
+      });
     }
     // Wholesale state replacement almost always invalidates the cached
     // selection (keys rarely survive a snapshot swap). Null it out before
@@ -312,7 +354,9 @@ export class Editor {
       const prev = this.state;
       this.state = next;
       if (this.root) {
-        this.reconciler.update(this.root, prev, next);
+        this.runWithObserverPaused(() => {
+          this.reconciler.update(this.root!, prev, next);
+        });
       }
 
       // Invalidate cached selection if structural mutations removed its
@@ -431,6 +475,15 @@ export class Editor {
     const snapshot = this.updateListeners.slice();
     for (const listener of snapshot) {
       listener(payload);
+    }
+  }
+
+  private handleDomMutations(
+    mutations: MutationRecord[],
+    _takeRecords: () => MutationRecord[],
+  ): void {
+    if (DEBUG_OBSERVER) {
+      console.debug('[DomObserver]', mutations);
     }
   }
 

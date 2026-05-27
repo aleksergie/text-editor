@@ -10,7 +10,7 @@ import {
   SET_TEXT_CONTENT,
   createCommand,
 } from './commands';
-import { Editor, UpdateListener, UpdateListenerPayload } from './editor';
+import { Editor, UpdateListener, UpdateListenerPayload, createEditor } from './editor';
 import {
   SelectionListener,
   SelectionSource,
@@ -923,6 +923,70 @@ describe('Editor selection state', () => {
       unsub();
       ctx.setSelection(null);
       expect(listener).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('DomObserver integration', () => {
+    function flushMutationObserver(): Promise<void> {
+      return new Promise((resolve) => {
+        setTimeout(resolve, 0);
+      });
+    }
+
+    it('observes foreign DOM mutations after setRoot', async () => {
+      const onMutation = jest.fn<void, [MutationRecord[]]>();
+      const mounted = createEditor({ domObserverCallback: onMutation });
+      const root = document.createElement('div');
+      mounted.setRoot(root);
+
+      root.appendChild(document.createElement('div'));
+      await flushMutationObserver();
+
+      expect(onMutation).toHaveBeenCalled();
+    });
+
+    it('does not invoke the mutation callback during reconciler updates', async () => {
+      const onMutation = jest.fn<void, [MutationRecord[]]>();
+      const mounted = createEditor({ domObserverCallback: onMutation });
+      const root = document.createElement('div');
+      mounted.setRoot(root);
+      onMutation.mockClear();
+
+      mounted.dispatchCommand(SET_TEXT_CONTENT, 'changed');
+      await flushMutationObserver();
+
+      expect(onMutation).not.toHaveBeenCalled();
+      expect(mounted.getEditorState().getText()).toBe('changed');
+    });
+
+    it('stops observing after setRoot(null)', async () => {
+      const onMutation = jest.fn<void, [MutationRecord[]]>();
+      const mounted = createEditor({ domObserverCallback: onMutation });
+      const root = document.createElement('div');
+      mounted.setRoot(root);
+      mounted.setRoot(null);
+      onMutation.mockClear();
+
+      root.appendChild(document.createElement('div'));
+      await flushMutationObserver();
+
+      expect(onMutation).not.toHaveBeenCalled();
+    });
+
+    it('swaps observers when the root element changes', async () => {
+      const onMutation = jest.fn<void, [MutationRecord[]]>();
+      const mounted = createEditor({ domObserverCallback: onMutation });
+      const rootA = document.createElement('div');
+      const rootB = document.createElement('div');
+      mounted.setRoot(rootA);
+      mounted.setRoot(rootB);
+      onMutation.mockClear();
+
+      rootA.appendChild(document.createElement('div'));
+      rootB.appendChild(document.createElement('div'));
+      await flushMutationObserver();
+
+      expect(onMutation).toHaveBeenCalledTimes(1);
     });
   });
 });

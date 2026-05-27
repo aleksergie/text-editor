@@ -79,6 +79,38 @@ export class Reconciler {
     return null;
   }
 
+  /** Exact `domToKey` lookup; does not walk ancestors. */
+  keyForExactDomNode(node: Node | null): NodeKey | null {
+    if (!node) {
+      return null;
+    }
+    return this.domToKey.get(node) ?? null;
+  }
+
+  isManagedDomNode(node: Node | null): boolean {
+    return this.keyForExactDomNode(node) !== null;
+  }
+
+  /**
+   * Walk ancestors until a registered DOM node is found, then return the
+   * rendered host element for its model key.
+   */
+  nearestManagedDomPair(node: Node | null): { dom: HTMLElement; key: NodeKey } | null {
+    let cursor: Node | null = node;
+    while (cursor) {
+      const key = this.domToKey.get(cursor);
+      if (key !== undefined) {
+        const dom = this.keyToDom.get(key);
+        if (dom) {
+          return { dom, key };
+        }
+        return null;
+      }
+      cursor = cursor.parentNode;
+    }
+    return null;
+  }
+
   private render(rootEl: HTMLElement, state: EditorState) {
     rootEl.innerHTML = '';
     this.keyToDom.clear();
