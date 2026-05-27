@@ -107,6 +107,21 @@ Lexical implementation is a proven reference for how to get there.
 
 This likely needs a few steps rather than one large rewrite.
 
+### Recommended Sequencing With Mutation Observer Roadmap
+
+Recommended order:
+
+1. Ship `docs/mutation-observer-roadmap.md` Phase 1 first. It adds the
+   observer pause/resume contract and exact DOM lookup helpers.
+2. Ship this input-selection roadmap. The DOM selection writer in step 3
+   should call `runWithObserverPaused` so writing browser selection does
+   not trigger mutation-observer feedback.
+3. Return to `docs/mutation-observer-roadmap.md` Phases 2-5 for text
+   mutation sync, childList defense, IME variance handling, and recovery.
+
+If this roadmap ships before the observer Phase 1, retrofit the selection
+writer to use `runWithObserverPaused` as soon as that helper exists.
+
 ### 1. Give input commands a selection source
 
 Commands such as `INSERT_TEXT`, `DELETE_CHARACTER`, and
