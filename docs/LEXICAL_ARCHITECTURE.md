@@ -907,7 +907,7 @@ export function $reconcileRoot(
   activeNextNodeMap = nextEditorState._nodeMap;
   activeDirtyElements = dirtyElements;
   activeDirtyLeaves = dirtyLeaves;
-  activePrevKeyToDOMMap = new Map(editor._keyToDOMMap);
+  activePrevKeyToDOMMap = cloneMap(editor._keyToDOMMap);
   mutatedNodes = new Map();
   subTreeTextContent = '';
 
@@ -1380,7 +1380,7 @@ if ($isTextNode(node) && node.isAttached() && node.isSimpleText() && !node.isUnm
 |---|---|---|---|
 | `isReadOnlyMode = true` | Module flag | Both | `editor.read()` can't mutate |
 | `EditorState._readOnly = true` | Per-state flag | Both | Committed state immutable |
-| `cloneEditorState()` shallow copy | Structural | Both | Each cycle gets fresh Map |
+| `cloneEditorState()` + `GenMap` | Structural | Both | O(1) map clone; nodes COW via `getWritable()` |
 | `getWritable()` + `_cloneNotNeeded` | Copy-on-write | Both | New object on first mutation |
 | `Object.freeze(node)` | Hard freeze | DEV only | Direct assignment throws |
 | `nodeMap.set/clear/delete` overrides | Hard freeze | DEV only | Direct Map mutation throws |
@@ -1423,16 +1423,92 @@ if (pendingEditorState === null || pendingEditorState._readOnly) {
 }
 ```
 
-### Layer 3 — Shallow Clone
+### Layer 3 — Shallow Clone via GenMap
 
 ```ts
 // LexicalEditorState.ts:48
 export function cloneEditorState(current: EditorState): EditorState {
-  return new EditorState(new Map(current._nodeMap));
+  return new EditorState(cloneMap(current._nodeMap));
 }
 ```
 
-New Map container, same node references. Cheap.
+`cloneMap()` returns a new map container in **O(1)** via `GenMap` (see below). Node references are shared until a key is written.
+
+### GenMap (Copy-on-Write Map)
+
+Cloning state on every update is expensive for large `Map<Key, Value>` collections. Lexical's `GenMap` makes that clone O(1) by sharing `_old` and `_nursery` until the first write.
+
+| Piece | Role |
+|---|---|
+| `_old` | Immutable snapshot from the most recent compaction |
+| `_nursery` | Writes since last compaction; deletions stored as `TOMBSTONE` |
+| `_mutable` | Whether `_nursery` can be written in-place or must be cloned first |
+| `_size` | Entry count (tombstones excluded) |
+
+**Key operations:**
+
+- **`clone()`** — O(1). New `GenMap` shares `_old` and `_nursery`; marks both non-mutable.
+- **First write after clone** — `getNursery()` shallow-copies `_nursery` or compacts first if the nursery has grown large enough.
+- **`delete(key)`** — sets `TOMBSTONE` in nursery (does not mutate shared `_old`).
+- **`compact()`** — triggered when `_nursery.size * 2 > _size`; folds nursery into a new `_old`.
+- **`cloneMap(map)`** — source is already `GenMap` → `map.clone()` (O(1)); plain `Map` below ~1,000 entries → `new Map(map)`; at or above threshold → wrap in `GenMap`.
+
+**Typical usage:**
+
+```ts
+const nextNodeMap = cloneMap(currentState._nodeMap);
+nextNodeMap.set(changedKey, newValue); // only touched keys pay copy cost
+```
+
+**How it fits Lexical's double-buffering:**
+
+1. `editor.update()` clones the current `EditorState` (including `_nodeMap`) as work-in-progress
+2. `GenMap` makes that map clone O(1) via sharing
+3. Only nodes that change call `getWritable()` and get new copies
+4. After reconciliation, the new state becomes current
+
+GenMap pairs with per-item copy-on-write: cheap container clone, mutate only what changed.
+
+**When NOT to use:** small maps (below ~1,000 entries), maps fully replaced every update, or when strict isolation without shared-reference semantics is required.
+
+**Lexical source files:**
+
+| Item | Location |
+|---|---|
+| Implementation | `packages/lexical/src/LexicalGenMap.ts` |
+| State clone | `cloneEditorState()` → `cloneMap(current._nodeMap)` in `LexicalEditorState.ts` |
+| Reconciler | `cloneMap(editor._keyToDOMMap)` in `LexicalReconciler.ts` |
+| Unit tests | `packages/lexical/src/__tests__/unit/LexicalGenMap.test.ts` |
+| Benchmarks | `packages/lexical/src/__bench__/nodeMap.bench.ts` |
+
+```mermaid
+graph TB
+  subgraph s0["Initial State"]
+    m0["NodeMap (v0)"]
+    m0 -->|Key A| n0a["A (v0)"]
+    m0 -->|Key B| n0b["B (v0)"]
+  end
+  subgraph s1["Add Key C"]
+    style n1a stroke-dasharray: 5 5
+    style n1b stroke-dasharray: 5 5
+    m1["NodeMap (v1) — shared GenMap clone"]
+    m1 -->|Key A| n1a["A (v0)"]
+    m1 -->|Key B| n1b["B (v0)"]
+    m1 -->|Key C| n1c["C (v0)"]
+  end
+  subgraph s2["Update Key A"]
+    style n2a stroke-dasharray: 5 0
+    style n2b stroke-dasharray: 5 5
+    style n2c stroke-dasharray: 5 5
+    m2["NodeMap (v2) — COW nursery write"]
+    m2 -->|Key A| n2a["A (v1)"]
+    m2 -->|Key B| n2b["B (v0)"]
+    m2 -->|Key C| n2c["C (v0)"]
+  end
+  s0 -.-> s1 -.-> s2
+```
+
+Dashed outlines = nodes reused zero-copy from the previous state.
 
 ### Layer 4 — `Object.freeze` in DEV
 
