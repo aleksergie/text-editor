@@ -72,8 +72,6 @@ export function createEditor(options?: CreateEditorOptions): Editor {
   return new Editor(options);
 }
 
-const DEBUG_OBSERVER = false;
-
 export class Editor {
   private state = EditorState.createEmpty();
   private reconciler = new Reconciler();
@@ -484,12 +482,30 @@ export class Editor {
   }
 
   private handleDomMutations(
-    mutations: MutationRecord[],
+    _mutations: MutationRecord[],
     _takeRecords: () => MutationRecord[],
   ): void {
-    if (DEBUG_OBSERVER) {
-      console.debug('[DomObserver]', mutations);
+    // Phase 4 mutation defense will handle records here.
+  }
+
+  private runRangeAwareUpdate(
+    range: TextRange | null | undefined,
+    mutateAtRange: (state: EditorState, range: TextRange) => TextRange | null,
+    legacy: (state: EditorState) => void,
+  ): void {
+    if (range) {
+      this.update(
+        (state) => {
+          const nextSelection = mutateAtRange(state, range);
+          if (nextSelection) {
+            this.setSelection(nextSelection, { source: 'programmatic' });
+          }
+        },
+        { syncDomSelection: true },
+      );
+      return;
     }
+    this.update((state) => legacy(state));
   }
 
   private registerDefaultHandlers() {
@@ -511,16 +527,10 @@ export class Editor {
         if (!text) {
           return true;
         }
-        this.update(
-          (state) => {
-            if (range) {
-              const nextSelection = state.insertTextAtRange(range, text);
-              this.setSelection(nextSelection, { source: 'programmatic' });
-              return;
-            }
-            state.insertText(text);
-          },
-          { syncDomSelection: true },
+        this.runRangeAwareUpdate(
+          range,
+          (state, r) => state.insertTextAtRange(r, text),
+          (state) => state.insertText(text),
         );
         return true;
       },
@@ -530,18 +540,10 @@ export class Editor {
     this.registerCommand(
       DELETE_CHARACTER,
       ({ isBackward, range }) => {
-        this.update(
-          (state) => {
-            if (range) {
-              const nextSelection = state.deleteCharacterAtRange(range, isBackward);
-              if (nextSelection) {
-                this.setSelection(nextSelection, { source: 'programmatic' });
-              }
-              return;
-            }
-            state.deleteCharacter(isBackward);
-          },
-          { syncDomSelection: true },
+        this.runRangeAwareUpdate(
+          range,
+          (state, r) => state.deleteCharacterAtRange(r, isBackward),
+          (state) => state.deleteCharacter(isBackward),
         );
         return true;
       },
@@ -551,18 +553,10 @@ export class Editor {
     this.registerCommand(
       INSERT_PARAGRAPH,
       ({ range }) => {
-        this.update(
-          (state) => {
-            if (range) {
-              const nextSelection = state.insertParagraphAtRange(range);
-              if (nextSelection) {
-                this.setSelection(nextSelection, { source: 'programmatic' });
-              }
-              return;
-            }
-            state.insertParagraph();
-          },
-          { syncDomSelection: true },
+        this.runRangeAwareUpdate(
+          range,
+          (state, r) => state.insertParagraphAtRange(r),
+          (state) => state.insertParagraph(),
         );
         return true;
       },

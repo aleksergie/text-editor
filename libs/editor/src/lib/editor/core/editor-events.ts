@@ -13,6 +13,7 @@ export function registerInputCommandHandlers(editor: Editor): void {
   editor.registerCommand(
     BEFORE_INPUT_COMMAND,
     (event) => {
+      const range = resolveInputSelection(editor);
       switch (event.inputType) {
         case 'insertText': {
           const text = event.data ?? '';
@@ -20,28 +21,23 @@ export function registerInputCommandHandlers(editor: Editor): void {
             return false;
           }
           event.preventDefault();
-          return editor.dispatchCommand(INSERT_TEXT, {
-            text,
-            range: resolveInputSelection(editor),
-          });
+          return editor.dispatchCommand(INSERT_TEXT, { text, range });
         }
         case 'deleteContentBackward':
           event.preventDefault();
           return editor.dispatchCommand(DELETE_CHARACTER, {
             isBackward: true,
-            range: resolveInputSelection(editor),
+            range,
           });
         case 'deleteContentForward':
           event.preventDefault();
           return editor.dispatchCommand(DELETE_CHARACTER, {
             isBackward: false,
-            range: resolveInputSelection(editor),
+            range,
           });
         case 'insertParagraph':
           event.preventDefault();
-          return editor.dispatchCommand(INSERT_PARAGRAPH, {
-            range: resolveInputSelection(editor),
-          });
+          return editor.dispatchCommand(INSERT_PARAGRAPH, { range });
         default:
           return false;
       }
@@ -94,7 +90,7 @@ function resolveInputSelection(editor: Editor): TextRange | null {
   if (!root) {
     return editor.getSelection();
   }
-  const win = root.ownerDocument?.defaultView as (Window & typeof globalThis) | null;
+  const win = root.ownerDocument?.defaultView;
   if (!win) {
     return editor.getSelection();
   }
@@ -107,11 +103,11 @@ function resolveInputSelection(editor: Editor): TextRange | null {
   return resolveDomSelection(editor, win) ?? editor.getSelection();
 }
 
-function resyncFromDom(editor: Editor, root: HTMLElement): boolean {
+function resyncFromDom(editor: Editor, root: HTMLElement): void {
   const domText = root.innerText ?? '';
   const modelText = editor.read((state) => state.getText());
   if (domText === modelText) {
-    return false;
+    return;
   }
-  return editor.dispatchCommand(SET_TEXT_CONTENT, domText);
+  editor.dispatchCommand(SET_TEXT_CONTENT, domText);
 }

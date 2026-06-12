@@ -38,7 +38,7 @@ export class DomObserver {
     if (!this.observer) {
       this.observer = new MutationObserver((records) => {
         if (this.pauseDepth === 0) {
-          this.callback(records, () => this.observer?.takeRecords() ?? []);
+          this.deliver(records);
         }
       });
     }
@@ -84,7 +84,11 @@ export class DomObserver {
     }
     const records = this.observer.takeRecords();
     if (records.length > 0) {
-      this.callback(records, () => this.observer?.takeRecords() ?? []);
+      this.deliver(records);
     }
+  }
+
+  private deliver(records: MutationRecord[]): void {
+    this.callback(records, () => this.observer?.takeRecords() ?? []);
   }
 }

@@ -34,6 +34,7 @@ export function writeDomSelection(
     return false;
   }
 
+  let written = false;
   editor.runWithObserverPaused(() => {
     try {
       selection.setBaseAndExtent(
@@ -42,13 +43,14 @@ export function writeDomSelection(
         focus.node,
         focus.offset,
       );
+      written = true;
     } catch {
       // Native selection can reject stale DOM points in Firefox-like edge
       // cases. Keep editor state authoritative and skip DOM write.
     }
   });
 
-  return true;
+  return written;
 }
 
 function resolveModelPointToDom(editor: Editor, point: TextPoint): DomPoint | null {
@@ -108,14 +110,14 @@ export function findDomPointInHost(
   }
 
   if (clampedOffset === 0) {
-    const firstText = findFirstTextNode(host);
+    const firstText = findBoundaryTextNode(host, 'first');
     if (firstText) {
       return { node: firstText, offset: 0 };
     }
   }
 
   if (clampedOffset === textLength) {
-    const lastText = findLastTextNode(host);
+    const lastText = findBoundaryTextNode(host, 'last');
     if (lastText) {
       return { node: lastText, offset: (lastText.textContent ?? '').length };
     }
@@ -124,18 +126,13 @@ export function findDomPointInHost(
   return null;
 }
 
-function findFirstTextNode(root: Node): Text | null {
+function findBoundaryTextNode(root: Node, edge: 'first' | 'last'): Text | null {
   const walker = root.ownerDocument?.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   if (!walker) {
     return null;
   }
-  return walker.nextNode() as Text | null;
-}
-
-function findLastTextNode(root: Node): Text | null {
-  const walker = root.ownerDocument?.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-  if (!walker) {
-    return null;
+  if (edge === 'first') {
+    return walker.nextNode() as Text | null;
   }
   let last: Text | null = null;
   let current = walker.nextNode();

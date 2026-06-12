@@ -549,9 +549,8 @@ export class EditorState {
     if (startNode === endNode) {
       // Same node: split off the tail first (so start-side indices survive),
       // then split at the start offset. The "middle" is the aligned range.
-      const { right: tail } = this.splitTextNodeAt(startNode, end.offset);
+      this.splitTextNodeAt(startNode, end.offset);
       const { right: middle } = this.splitTextNodeAt(startNode, start.offset);
-      void tail;
       alignedStart = middle ?? startNode;
       alignedEnd = alignedStart;
     } else {

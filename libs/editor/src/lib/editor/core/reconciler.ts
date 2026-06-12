@@ -68,15 +68,7 @@ export class Reconciler {
    * the editor root).
    */
   keyForDomNode(node: Node | null): NodeKey | null {
-    let cursor: Node | null = node;
-    while (cursor) {
-      const key = this.domToKey.get(cursor);
-      if (key !== undefined) {
-        return key;
-      }
-      cursor = cursor.parentNode;
-    }
-    return null;
+    return this.nearestManagedDomPair(node)?.key ?? null;
   }
 
   /** Exact `domToKey` lookup; does not walk ancestors. */

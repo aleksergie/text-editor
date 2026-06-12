@@ -25,9 +25,10 @@ export interface TextPoint {
 }
 
 /**
- * A transient selection range resolved from the live DOM. V2 does not store
- * selection on `EditorState`; consumers call `resolveDomSelection` when they
- * need a range for a command payload and drop the value afterwards.
+ * A selection range in model coordinates. The editor caches the latest range
+ * via `Editor.getSelection()`; input handlers fall back to that cache when
+ * live DOM resolution is unavailable. Call `resolveDomSelection` when reading
+ * from the browser selection inside the mounted root.
  *
  * - `anchor` is where the selection started (native browser semantics).
  * - `focus` is where the selection ends (the movable edge).
@@ -243,6 +244,7 @@ function normalizeOffsetWithinTextNode(
   walk(host);
 
   if (!found) {
+    // TODO: Move this to the separate clamp function
     return Math.min(Math.max(domOffset, 0), textLength);
   }
   return Math.min(Math.max(accumulated, 0), textLength);
