@@ -8,6 +8,11 @@ Snapshot of the system as of V2 rich-text formatting. Companion notes:
 selection state (Phase 1 landed, Phases 2-3 pending).
 - `docs/decisions/ADR-001-directive-owns-editor-lifecycle.md` - decision
 record for directive-owned Angular editor lifecycle.
+- `docs/decisions/ADR-004-lexical-style-dirty-tracking.md` - the
+`dirtyLeaves` / `dirtyElements` / `dirtyType` split and the bubble-up
+contract `markDirty` maintains.
+- `CONTEXT.md` - canonical vocabulary for reconciliation, dirty tracking,
+and the DOM bridge. Read this before adding new terms.
 
 This document describes the system in three views:
 
@@ -259,11 +264,16 @@ buffered until commit.
 ### Reconciliation
 
 After the mutator returns, `Editor` passes the old and new states to
-`Reconciler.update`:
+`Reconciler.update`. The reconciler reads the dirty bookkeeping from
+`EditorState` (see [ADR-004](decisions/ADR-004-lexical-style-dirty-tracking.md)
+and `CONTEXT.md` for the **Dirty Leaf** / **Intentional Dirty** / **Bubble
+Dirty** vocabulary):
 
-- If `renderOrder` is unchanged, the reconciler walks dirty keys and calls
-`node.updateDOM(host)` on each, then re-runs `indexSubtree(host, key)`
-so `domToKey` stays coherent with any newly-created format wrappers.
+- If `renderOrder` is unchanged, the reconciler walks the intentionally
+dirty keys (`getDirtyNodeKeys()`) and calls `node.updateDOM(host)` on each,
+then re-runs `indexSubtree(host, key)` so `domToKey` stays coherent with
+any newly-created format wrappers. PR-2 will replace this flat loop with a
+recursive walk gated on `dirtyElements.has(key)`.
 - If `renderOrder` changed (paragraph split, node insertion or deletion),
 the reconciler takes the full-render path: clears `innerHTML`, rebuilds
 the DOM from scratch, repopulates both lookup maps.

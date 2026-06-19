@@ -3,7 +3,11 @@ import {
   $createTextNode,
   $isElementNode,
 } from './nodes/node-utils';
-import { EditorState } from './state';
+import {
+  EditorState,
+  HAS_DIRTY_NODES,
+  NO_DIRTY_NODES,
+} from './state';
 
 describe('EditorState', () => {
   describe('createEmpty', () => {
@@ -63,6 +67,91 @@ describe('EditorState', () => {
       state.clearDirtyNodeKeys();
 
       expect(state.getDirtyNodeKeys().size).toBe(0);
+    });
+
+    it('dirtyType is NO_DIRTY_NODES on a fresh state and after clear', () => {
+      const state = EditorState.createEmpty();
+      expect(state.getDirtyType()).toBe(NO_DIRTY_NODES);
+
+      state.setText('a');
+      expect(state.getDirtyType()).toBe(HAS_DIRTY_NODES);
+
+      state.clearDirtyNodeKeys();
+      expect(state.getDirtyType()).toBe(NO_DIRTY_NODES);
+    });
+
+    it('marking a leaf bubbles dirt up to ancestor elements as false', () => {
+      const state = EditorState.createEmpty();
+      state.clearDirtyNodeKeys();
+
+      state.markDirty('t1');
+
+      // Leaf entered dirtyLeaves intentionally.
+      expect(state.getDirtyLeaves().has('t1')).toBe(true);
+
+      // Ancestors entered dirtyElements as bubble (false).
+      const elements = state.getDirtyElements();
+      expect(elements.get('p1')).toBe(false);
+      expect(elements.get(state.rootKey)).toBe(false);
+
+      // Public payload excludes bubble entries.
+      const intentional = state.getDirtyNodeKeys();
+      expect(intentional.has('t1')).toBe(true);
+      expect(intentional.has('p1')).toBe(false);
+      expect(intentional.has(state.rootKey)).toBe(false);
+    });
+
+    it('marking an element directly sets its dirtyElements entry to true', () => {
+      const state = EditorState.createEmpty();
+      state.clearDirtyNodeKeys();
+
+      state.markDirty('p1');
+
+      expect(state.getDirtyElements().get('p1')).toBe(true);
+      // Root is the only ancestor; it sits as a bubble entry.
+      expect(state.getDirtyElements().get(state.rootKey)).toBe(false);
+      // Intentional payload includes p1 but not the bubble root.
+      const intentional = state.getDirtyNodeKeys();
+      expect(intentional.has('p1')).toBe(true);
+      expect(intentional.has(state.rootKey)).toBe(false);
+    });
+
+    it('an intentional mark after a bubble mark does not downgrade the entry', () => {
+      const state = EditorState.createEmpty();
+      state.clearDirtyNodeKeys();
+
+      state.markDirty('t1');                              // bubble p1 with false
+      expect(state.getDirtyElements().get('p1')).toBe(false);
+
+      state.markDirty('p1');                              // upgrade p1 to true
+      expect(state.getDirtyElements().get('p1')).toBe(true);
+      // Public payload now includes p1 as intentional.
+      expect(state.getDirtyNodeKeys().has('p1')).toBe(true);
+    });
+
+    it('marking the same leaf twice is idempotent', () => {
+      const state = EditorState.createEmpty();
+      state.clearDirtyNodeKeys();
+
+      state.markDirty('t1');
+      const sizeAfterFirst = state.getDirtyElements().size;
+
+      state.markDirty('t1');
+
+      // No new ancestor entries added on the second call (stop-early bubble).
+      expect(state.getDirtyElements().size).toBe(sizeAfterFirst);
+      expect(state.getDirtyLeaves().size).toBe(1);
+    });
+
+    it('marking an unknown key is a no-op', () => {
+      const state = EditorState.createEmpty();
+      state.clearDirtyNodeKeys();
+
+      state.markDirty('does-not-exist');
+
+      expect(state.getDirtyType()).toBe(NO_DIRTY_NODES);
+      expect(state.getDirtyLeaves().size).toBe(0);
+      expect(state.getDirtyElements().size).toBe(0);
     });
   });
 

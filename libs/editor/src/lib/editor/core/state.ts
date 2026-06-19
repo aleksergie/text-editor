@@ -28,12 +28,42 @@ import {
   removeFormat,
 } from './text-format';
 
+/**
+ * Three-state enum that tracks whether the transaction-scoped dirty bookkeeping
+ * holds anything reconcilable. Lexical-aligned (see ADR-004); `FULL_RECONCILE`
+ * is reserved for Phase 4 mutation defense and is not produced by Phase 1
+ * helpers.
+ */
+export const NO_DIRTY_NODES = 0 as const;
+export const HAS_DIRTY_NODES = 1 as const;
+export const FULL_RECONCILE = 2 as const;
+export type DirtyType = typeof NO_DIRTY_NODES | typeof HAS_DIRTY_NODES | typeof FULL_RECONCILE;
+
 export class EditorState {
+  /**
+   * Dirty leaves: TextNodes (and future leaf kinds like LineBreak/Decorator)
+   * that changed text or format. Never includes elements.
+   */
+  private readonly dirtyLeaves: Set<NodeKey>;
+  /**
+   * Dirty elements. The boolean separates *intentional* dirt (the element
+   * itself changed structure or attributes) from *bubble* dirt (a descendant
+   * changed and this entry exists so the reconciler will descend through it).
+   */
+  private readonly dirtyElements: Map<NodeKey, boolean>;
+  private dirtyType: DirtyType;
+
   constructor(
     public readonly nodes: NodeMap,
     public readonly rootKey: NodeKey,
-    private readonly dirtyNodes: Set<NodeKey> = new Set(),
-  ) {}
+    dirtyLeaves: Set<NodeKey> = new Set(),
+    dirtyElements: Map<NodeKey, boolean> = new Map(),
+    dirtyType: DirtyType = NO_DIRTY_NODES,
+  ) {
+    this.dirtyLeaves = dirtyLeaves;
+    this.dirtyElements = dirtyElements;
+    this.dirtyType = dirtyType;
+  }
 
   /**
    * Build the v1 baseline document: `root > paragraph > empty text node`.
@@ -57,8 +87,8 @@ export class EditorState {
   }
 
   clone(): EditorState {
-    // Dirty keys are transaction-scoped and should not leak into the next update.
-    return new EditorState(new Map(this.nodes), this.rootKey, new Set());
+    // Dirty bookkeeping is transaction-scoped and should not leak into the next update.
+    return new EditorState(new Map(this.nodes), this.rootKey);
   }
 
   setText(nextText: string) {
@@ -138,16 +168,88 @@ export class EditorState {
     this.nodes.delete(target.key);
   }
 
+  /**
+   * Record that `nodeKey` changed in this transaction and propagate the dirt
+   * up the parent chain so the reconciler will descend through ancestors to
+   * reach it. Idempotent: marking the same key twice is a no-op for ancestors
+   * because `bubbleParentsDirty` stops at the first already-marked ancestor.
+   *
+   * Element vs leaf dispatch uses `$isElementNode`; an unknown key (not in
+   * `nodes`) is a no-op so transient cleanup paths can mark-then-delete
+   * without ordering constraints.
+   */
   markDirty(nodeKey: NodeKey) {
-    this.dirtyNodes.add(nodeKey);
+    const node = this.nodes.get(nodeKey);
+    if (!node) {
+      return;
+    }
+    if ($isElementNode(node)) {
+      this.dirtyElements.set(nodeKey, true);
+    } else {
+      this.dirtyLeaves.add(nodeKey);
+    }
+    this.dirtyType = HAS_DIRTY_NODES;
+    this.bubbleParentsDirty(node.__parent);
   }
 
+  /**
+   * Walk ancestors marking each with `false` (bubble dirt). Stops as soon as
+   * an ancestor is already in `dirtyElements`, because by induction its own
+   * ancestors must also be marked - the only way an element entered the map
+   * is through this same helper or through an intentional `markDirty` call.
+   */
+  private bubbleParentsDirty(parentKey: NodeKey | null) {
+    let cursor = parentKey;
+    while (cursor !== null) {
+      if (this.dirtyElements.has(cursor)) {
+        return;
+      }
+      this.dirtyElements.set(cursor, false);
+      cursor = this.nodes.get(cursor)?.__parent ?? null;
+    }
+  }
+
+  /**
+   * The set of *intentionally* dirty keys: leaves plus elements whose own
+   * structure or attributes changed. Bubble-up entries (ancestors marked
+   * `false` to give the reconciler a path) are deliberately excluded so
+   * update-listener payloads only carry meaningful changes.
+   */
   getDirtyNodeKeys(): ReadonlySet<NodeKey> {
-    return this.dirtyNodes;
+    const out = new Set<NodeKey>(this.dirtyLeaves);
+    for (const [key, intentional] of this.dirtyElements) {
+      if (intentional) {
+        out.add(key);
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Internal: the raw dirty-leaves set. Exposed for the reconciler in PR-2
+   * (recursive walk); external callers should prefer `getDirtyNodeKeys`.
+   */
+  getDirtyLeaves(): ReadonlySet<NodeKey> {
+    return this.dirtyLeaves;
+  }
+
+  /**
+   * Internal: the raw dirty-elements map. `value === true` means the element
+   * itself changed; `value === false` means it sits on a parent chain above
+   * a dirty descendant.
+   */
+  getDirtyElements(): ReadonlyMap<NodeKey, boolean> {
+    return this.dirtyElements;
+  }
+
+  getDirtyType(): DirtyType {
+    return this.dirtyType;
   }
 
   clearDirtyNodeKeys() {
-    this.dirtyNodes.clear();
+    this.dirtyLeaves.clear();
+    this.dirtyElements.clear();
+    this.dirtyType = NO_DIRTY_NODES;
   }
 
   getText(): string {
