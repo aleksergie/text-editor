@@ -42,9 +42,10 @@ setup and teardown.
 plus structural helpers (insert/remove/split/merge). Every mutation goes
 through `insertAfterUtil` / `removeUtil` / `replaceUtil` so the
 doubly-linked-list invariants stay intact.
-- `**Reconciler**` - the DOM writer. Maintains `keyToDom: Map<NodeKey, HTMLElement>` and `domToKey: WeakMap<Node, NodeKey>`. Does dirty-node
-updates on every editor transaction; falls back to a full render when the
-document's render order changes.
+- `**Reconciler**` - the DOM writer. Maintains `keyToDom: Map<NodeKey, HTMLElement>` and `domToKey: WeakMap<Node, NodeKey>`. Walks recursively
+from the root, descending only into subtrees that carry dirt (per the
+bubble-up convention in `EditorState`); a full render is reserved for
+initial mount and root-key swaps.
 - **Commands** - typed, priority-ordered dispatch bus. Payload types are
 attached to the command via a phantom-type pattern so registration and
 dispatch stay type-safe.
@@ -189,15 +190,24 @@ owning `TextNode`'s key. Populated by `Reconciler.indexSubtree`, which
 walks every descendant of a rendered host with a `TreeWalker` and maps
 each one back to the host's key.
 
-`indexSubtree` runs on initial render and after every dirty `updateDOM`
-call. This keeps the WeakMap coherent across format-stack rebuilds so that
-a `selectionchange` anchored inside a newly-created `<strong>` still
-resolves to the right `TextNode`. Detached DOM from previous renders gets
+`indexSubtree` runs on initial creation of a host (via `createNode`) and
+after any `updateDOM` call that returns `true` - the signal that DOM
+descendants were replaced (e.g. a TextNode format change rebuilt its
+`<strong><em>...</em></strong>` stack). Text-only flips preserve the holder
+element's child identities and return `false`, so the WeakMap stays valid
+without a re-walk. Detached DOM from previous renders gets
 garbage-collected on its own - that is why `domToKey` is a `WeakMap`, not
 a regular `Map`.
 
-`keyToDom` is keyed by a string and cleared manually at the top of
-`Reconciler.render`.
+`keyToDom` is keyed by a string. It is cleared at the top of
+`Reconciler.render` (full mount path) and incrementally pruned in
+`Reconciler.reconcileChildren` whenever a child DOM is removed - the
+removed key and its model descendants are dropped via
+`deleteKeyToDomSubtree`. The recursive reconciler treats `keyToDom` itself
+as the source of truth for "what was previously rendered" because
+`EditorState.clone` shares `NodeBase` instances between prev and next, so
+prev's `__first` / `__next` pointers reflect the post-mutation tree, not
+the pre-mutation one.
 
 ## 3. Runtime Dispatch - How Input Becomes a DOM Change
 
@@ -264,23 +274,29 @@ buffered until commit.
 ### Reconciliation
 
 After the mutator returns, `Editor` passes the old and new states to
-`Reconciler.update`. The reconciler reads the dirty bookkeeping from
-`EditorState` (see [ADR-004](decisions/ADR-004-lexical-style-dirty-tracking.md)
-and `CONTEXT.md` for the **Dirty Leaf** / **Intentional Dirty** / **Bubble
+`Reconciler.update`. The reconciler is recursive and reads the dirty
+bookkeeping from `EditorState` (see
+[ADR-004](decisions/ADR-004-lexical-style-dirty-tracking.md) and
+`CONTEXT.md` for the **Dirty Leaf** / **Intentional Dirty** / **Bubble
 Dirty** vocabulary):
 
-- If `renderOrder` is unchanged, the reconciler walks the intentionally
-dirty keys (`getDirtyNodeKeys()`) and calls `node.updateDOM(host)` on each,
-then re-runs `indexSubtree(host, key)` so `domToKey` stays coherent with
-any newly-created format wrappers. PR-2 will replace this flat loop with a
-recursive walk gated on `dirtyElements.has(key)`.
-- If `renderOrder` changed (paragraph split, node insertion or deletion),
-the reconciler takes the full-render path: clears `innerHTML`, rebuilds
-the DOM from scratch, repopulates both lookup maps.
+- If `dirtyType === NO_DIRTY_NODES`, return immediately.
+- Otherwise descend from the root via `reconcileChildren`, which walks
+`nextElement.__first` / `__next` and diffs against the DOM currently in
+`parentDom`. Existing children with the same key are reconciled in place
+via `reconcileNode`; new children are built via `createNode` and inserted;
+removed children are detached and dropped from `keyToDom` (alongside their
+model descendants) via `deleteKeyToDomSubtree`.
+- `reconcileNode` fast-paths any key that is not in `dirtyLeaves` or
+`dirtyElements`, so subtrees with no descendant dirt are visited in O(1)
+at the parent boundary and never entered. `updateDOM` runs only on
+intentionally dirty keys.
 
-Dirty-node reconciliation is the hot path. Full rendering is a known
-scaling target; for typical user interactions (typing, format toggles) it
-is not hit.
+The full-render path (`render`) is reserved for the initial `mount`, for a
+`rootKey` swap, and for the case where the root model node is missing
+or not an element. The recursive `update` path handles every typical
+mutation (typing, formatting, paragraph split/merge, insertion, removal)
+without falling back.
 
 ### Update listeners
 

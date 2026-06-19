@@ -75,7 +75,11 @@ for the dirty-tracking design.
 - `FULL_RECONCILE` is reserved but has no producer in PR-1. Phase 4 mutation
   defense owns its first use; reading code that finds `dirtyType === 2`
   inside `state.ts` will not encounter it until that phase lands.
-- PR-2 will consume `getDirtyLeaves()` / `getDirtyElements()` to replace the
-  flat dirty loop in `Reconciler.update` with a recursive walk gated on
-  `dirtyElements.has(key)`. The flat loop in PR-1 still works against the
-  narrowed `getDirtyNodeKeys()` and stays in place until then.
+- The reconciler consumes `getDirtyLeaves()` / `getDirtyElements()` to drive
+  a recursive walk gated on `dirtyElements.has(key)`. `getDirtyNodeKeys()`
+  remains the public surface for update listeners; the raw accessors are
+  for the reconciler only and should not be exported beyond core.
+- A same-key model type change (e.g. swapping a TextNode for a ParagraphNode
+  under the same `NodeKey`) is not produced by any `state.ts` helper and is
+  documented as supported only insofar as the reconciler must not crash.
+  PR-3 will add in-place DOM replacement for this case.

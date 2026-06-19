@@ -89,36 +89,94 @@ describe('Reconciler', () => {
     });
   });
 
-  describe('update - structural fallback', () => {
-    it('falls back to full re-render when node order changes', () => {
+  describe('update - structural changes', () => {
+    it('preserves existing paragraph DOM identity when a sibling is added', () => {
       const prev = buildState([[{ key: 't1', text: 'one' }]]);
       reconciler.mount(rootEl, prev);
       const paragraphBefore = rootEl.children[0];
+      const spanBefore = paragraphBefore.children[0];
 
       const next = buildState([
         [{ key: 't1', text: 'one' }],
         [{ key: 't2', text: 'two' }],
       ]);
+      // Mirror what state.insertAfter does: mark the structural parent dirty.
+      next.markDirty(next.rootKey);
 
       reconciler.update(rootEl, prev, next);
 
       expect(rootEl.children).toHaveLength(2);
-      expect(rootEl.children[0]).not.toBe(paragraphBefore);
-      expect(rootEl.children[0].textContent).toBe('one');
+      // PR-2's locality win: the original paragraph DOM is reused, not recreated.
+      expect(rootEl.children[0]).toBe(paragraphBefore);
+      expect(rootEl.children[0].children[0]).toBe(spanBefore);
       expect(rootEl.children[1].textContent).toBe('two');
     });
 
-    it('falls back to full re-render when a node type changes at the same key', () => {
+    it('removes paragraph DOM and clears its keyToDom entry when a sibling is removed', () => {
+      const prev = buildState([
+        [{ key: 't1', text: 'keep' }],
+        [{ key: 't2', text: 'drop' }],
+      ]);
+      reconciler.mount(rootEl, prev);
+      expect(reconciler.getDom('p2')).not.toBeNull();
+      expect(reconciler.getDom('t2')).not.toBeNull();
+
+      const next = buildState([[{ key: 't1', text: 'keep' }]]);
+      next.markDirty(next.rootKey);
+
+      reconciler.update(rootEl, prev, next);
+
+      expect(rootEl.children).toHaveLength(1);
+      expect(rootEl.textContent).toBe('keep');
+      // PR-2's keyToDom-leak fix: removed subtree's entries are gone.
+      expect(reconciler.getDom('p2')).toBeNull();
+      expect(reconciler.getDom('t2')).toBeNull();
+    });
+
+    it('tolerates a same-key type change without throwing', () => {
       const prev = buildState([[{ key: 't1', text: 'text' }]]);
       reconciler.mount(rootEl, prev);
 
       const next = buildState([[{ key: 't1', text: 'text' }]]);
-      // Simulate a key whose type changed between states.
+      // Synthetic scenario: a key whose model type changed between states.
+      // Not produced by any state.ts helper; documented as supported only
+      // insofar as it must not crash.
       const paragraph = $createParagraphNode('t1');
       next.nodes.set('t1', paragraph);
       next.markDirty('t1');
 
       expect(() => reconciler.update(rootEl, prev, next)).not.toThrow();
+    });
+  });
+
+  describe('update - locality', () => {
+    it('does not call updateDOM on siblings of the dirty leaf', () => {
+      const prev = buildState([
+        [
+          { key: 't1', text: 'first' },
+          { key: 't2', text: 'second' },
+        ],
+      ]);
+      reconciler.mount(rootEl, prev);
+      expect(reconciler.getDom('t2')).not.toBeNull();
+
+      const next = buildState([
+        [
+          { key: 't1', text: 'first-edited' },
+          { key: 't2', text: 'second' },
+        ],
+      ]);
+      next.markDirty('t1');
+
+      const t2Spy = jest.spyOn(next.nodes.get('t2')!, 'updateDOM');
+      const t1Spy = jest.spyOn(next.nodes.get('t1')!, 'updateDOM');
+
+      reconciler.update(rootEl, prev, next);
+
+      // t1 is intentionally dirty -> reconciler runs updateDOM on it.
+      expect(t1Spy).toHaveBeenCalledTimes(1);
+      // t2 was not dirty -> its updateDOM must not be touched.
+      expect(t2Spy).not.toHaveBeenCalled();
     });
   });
 
