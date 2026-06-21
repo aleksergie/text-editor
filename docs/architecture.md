@@ -11,6 +11,9 @@ record for directive-owned Angular editor lifecycle.
 - `docs/decisions/ADR-004-lexical-style-dirty-tracking.md` - the
 `dirtyLeaves` / `dirtyElements` / `dirtyType` split and the bubble-up
 contract `markDirty` maintains.
+- `docs/copy-on-write-roadmap.md` - not-started plan for Lexical-style
+copy-on-write node semantics (PR-3). Captures phases, open decisions,
+and cost estimate. Resume here before starting COW work.
 - `CONTEXT.md` - canonical vocabulary for reconciliation, dirty tracking,
 and the DOM bridge. Read this before adding new terms.
 
