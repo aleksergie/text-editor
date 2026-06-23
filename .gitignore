@@ -42,3 +42,6 @@ Thumbs.db
 .nx/workspace-data
 
 .angular
+
+# bench: per-run artifact (baseline lives in bench-baseline.json, which IS committed)
+libs/editor/bench-results.json

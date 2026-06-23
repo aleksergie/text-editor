@@ -5,7 +5,8 @@
   "scripts": {
     "start": "nx serve",
     "build": "nx build",
-    "test": "nx test"
+    "test": "nx test",
+    "bench": "nx run editor:bench"
   },
   "private": true,
   "dependencies": {
@@ -53,7 +54,8 @@
     "ts-node": "10.9.1",
     "tslib": "^2.3.0",
     "typescript": "~5.7.2",
-    "typescript-eslint": "^8.19.0"
+    "typescript-eslint": "^8.19.0",
+    "vitest": "2.1.9"
   },
   "nx": {
     "includedScripts": []

@@ -15,6 +15,12 @@
     },
     "lint": {
       "executor": "@nx/eslint:lint"
+    },
+    "bench": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "npx vitest bench --run --root libs/editor"
+      }
     }
   }
 }
