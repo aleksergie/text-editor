@@ -65,10 +65,11 @@ export function bindEditorEvents(editor: Editor, root: HTMLElement): () => void 
     resyncFromDom(editor, root);
   };
 
-  const onInput = () => {
+  const onInput = (event: Event) => {
     if (isComposing) {
       return;
     }
+    editor.setLastInputTimeStamp(event.timeStamp);
     resyncFromDom(editor, root);
   };
 

@@ -11,6 +11,7 @@ import {
   INSERT_TEXT,
   SET_TEXT_CONTENT,
 } from './commands';
+import { flushMutations } from './dom-mutations';
 import { DomObserver, DomObserverCallback } from './dom-observer';
 import { writeDomSelection } from './dom-selection';
 import { bindEditorEvents, registerInputCommandHandlers } from './editor-events';
@@ -78,6 +79,7 @@ export class Editor {
   private domObserver: DomObserver;
   private root: HTMLElement | null = null;
   private inputEventsTeardown: (() => void) | null = null;
+  private inputEventTimeStamp = 0;
   private commandHandlers = new Map<EditorCommand<unknown>, HandlerEntry[]>();
   private updateListeners: UpdateListener[] = [];
   private rootListeners: RootElementListener[] = [];
@@ -105,7 +107,7 @@ export class Editor {
   constructor(options?: CreateEditorOptions) {
     this.domObserver = new DomObserver(
       options?.domObserverCallback ??
-        ((mutations, takeRecords) => this.handleDomMutations(mutations, takeRecords)),
+        ((mutations, takeRecords) => flushMutations(this, mutations)),
     );
     this.registerDefaultHandlers();
     registerInputCommandHandlers(this);
@@ -179,6 +181,18 @@ export class Editor {
 
   getDomForKey(key: NodeKey): HTMLElement | null {
     return this.reconciler.getDom(key);
+  }
+
+  nearestManagedDomPair(node: Node | null): { dom: HTMLElement; key: NodeKey } | null {
+    return this.reconciler.nearestManagedDomPair(node);
+  }
+
+  getLastInputTimeStamp(): number {
+    return this.inputEventTimeStamp;
+  }
+
+  setLastInputTimeStamp(timeStamp: number): void {
+    this.inputEventTimeStamp = timeStamp;
   }
 
   /** @internal Mounted root for input and selection bridge code. */
@@ -479,13 +493,6 @@ export class Editor {
     for (const listener of snapshot) {
       listener(payload);
     }
-  }
-
-  private handleDomMutations(
-    _mutations: MutationRecord[],
-    _takeRecords: () => MutationRecord[],
-  ): void {
-    // Phase 4 mutation defense will handle records here.
   }
 
   private runRangeAwareUpdate(

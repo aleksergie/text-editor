@@ -100,6 +100,19 @@ export class EditorState {
   }
 
   /**
+   * Update the text content of a specific TextNode in place and mark it dirty.
+   * Callable inside editor.update(). Intentionally narrower than insertText
+   * and setText so the observer cannot accidentally rewrite structure.
+   */
+  setTextNodeText(key: NodeKey, text: string): void {
+    const node = this.nodes.get(key);
+    if ($isTextNode(node) && node.text !== text) {
+      node.text = text;
+      this.markDirty(key);
+    }
+  }
+
+  /**
    * Register a node in the node map so its key resolves during reconciliation
    * and serialization. Safe to call on an already-registered node.
    */

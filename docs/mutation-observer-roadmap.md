@@ -2,7 +2,7 @@
 
 ## Status
 
-Phase 1 shipped (2026-05-27). Phases 2–5 are future work. Phase 1 adds
+Phase 1 shipped (2026-05-27) and Phase 2 shipped (2026-07-16). Phases 3–5 are future work. Phase 1 adds
 observer scaffolding and the reconciler pause/resume contract without
 changing editing behavior.
 
@@ -304,6 +304,8 @@ Acceptance:
    unchanged from open question #2 below.
 
 ### Phase 2 - CharacterData Handling
+
+**Status: Shipped (2026-07-16).**
 
 Goal: handle text mutations from spell-check and autocorrect. Structural
 mutations (childList) are still ignored.
