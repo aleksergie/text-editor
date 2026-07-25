@@ -19,6 +19,15 @@ export class Reconciler {
   }
 
   /**
+   * Rebuild the entire DOM subtree from the current EditorState.
+   * Used by the MutationObserver defense layer to recover from structural
+   * DOM damage without attempting a precise diff.
+   */
+  reconcileFromScratch(rootEl: HTMLElement, state: EditorState) {
+    this.render(rootEl, state);
+  }
+
+  /**
    * Reconcile from the root downwards. Visits only the subtrees that contain
    * dirt (intentional or bubble), per the dirty-element bubble-up invariant
    * maintained by `EditorState.markDirty`. See ADR-004 and CONTEXT.md for the

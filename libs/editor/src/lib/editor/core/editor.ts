@@ -145,6 +145,17 @@ export class Editor {
     }
   }
 
+  /**
+   * @internal Rebuild the DOM from scratch. Used by the mutation handler
+   * when structural defense fails to precisely repair foreign DOM changes.
+   */
+  reconcileFromScratch(): void {
+    if (!this.root) return;
+    this.runWithObserverPaused(() => {
+      this.reconciler.reconcileFromScratch(this.root!, this.state);
+    });
+  }
+
   /** Discard observer records after mutation-defense DOM cleanup. */
   drainObserverRecords(): void {
     this.domObserver.drain();

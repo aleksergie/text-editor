@@ -2,7 +2,7 @@
 
 ## Status
 
-Phase 1 shipped (2026-05-27) and Phase 2 shipped (2026-07-16). Phases 3–5 are future work. Phase 1 adds
+Phase 1 shipped (2026-05-27), Phase 2 shipped (2026-07-16), and Phase 3 shipped (2026-07-19). Phases 4–5 are future work. Phase 1 adds
 observer scaffolding and the reconciler pause/resume contract without
 changing editing behavior.
 
@@ -375,6 +375,7 @@ Acceptance:
 
 ### Phase 3 - ChildList Defense
 
+**Status: Shipped (2026-07-19).**
 Goal: revert structural mutations that did not come from the reconciler.
 
 Lexical reference: the `childList` branch in the `flushMutations`
