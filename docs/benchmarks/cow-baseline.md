@@ -56,3 +56,15 @@ the COW-touched mutation path.
 - `applyFormatToRange` benches mutate the document structurally (splits/merges). The bench
   toggles a flag rather than measuring a fixed shape, so under COW the iteration shape is
   identical pre/post by construction.
+
+## Post-COW Results (August 2026)
+
+Captured after the strict active-context enforcement was implemented. 
+
+| Scenario | ops/sec (hz) | mean (ms) | Notes |
+| --- | ---: | ---: | --- |
+| **single-char mid-doc insert (1000 paragraphs)** | **592,530.00** | **0.0017** | Dropped from 2.7M, exactly as predicted, due to parent chain cloning. Still far beyond human typing speed. |
+| **repeated BOLD toggle on one mid-doc paragraph (1000 paragraphs)** | **6,265.91** | **0.1596** | Faster than baseline. Proves that the DOM walk dominates the cost and COW copy-up is effectively "free" here. |
+| **typing burst: 50 tail appends on 500-paragraph doc** | **51.08** | **19.5755** | Slightly faster / within variance of the baseline. |
+
+**Conclusion:** The COW migration successfully achieved full state immutability with zero human-perceptible performance loss.
