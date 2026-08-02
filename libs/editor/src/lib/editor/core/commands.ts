@@ -78,6 +78,14 @@ export const DELETE_CHARACTER: EditorCommand<{ isBackward: boolean; range: TextR
 export const INSERT_PARAGRAPH: EditorCommand<{ range: TextRange | null }> =
   createCommand<{ range: TextRange | null }>('INSERT_PARAGRAPH');
 
+/** Insert a line break at the current selection. */
+export const INSERT_LINE_BREAK: EditorCommand<{ range: TextRange | null }> =
+  createCommand<{ range: TextRange | null }>('INSERT_LINE_BREAK');
+
+/** Insert a tab at the current selection. */
+export const INSERT_TAB: EditorCommand<{ range: TextRange | null }> =
+  createCommand<{ range: TextRange | null }>('INSERT_TAB');
+
 /** Replace the document's text content (non-structural). */
 export const SET_TEXT_CONTENT: EditorCommand<string> =
   createCommand<string>('SET_TEXT_CONTENT');

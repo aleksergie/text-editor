@@ -2,6 +2,7 @@ import { ElementNode, ParagraphNode, RootNode } from './element-node';
 import { NodeBase, NodeKey, NodeMap } from './node';
 import { TextNode } from './text-node';
 import { LineBreakNode } from './line-break-node';
+import { TabNode } from './tab-node';
 
 export function $createRootNode(key: NodeKey): RootNode {
   return new RootNode(key);
@@ -27,6 +28,10 @@ export function $createLineBreakNode(key: NodeKey): LineBreakNode {
   return new LineBreakNode(key);
 }
 
+export function $createTabNode(key: NodeKey): TabNode {
+  return new TabNode(key);
+}
+
 export function $isRootNode(node: NodeBase | null | undefined): node is RootNode {
   return node instanceof RootNode;
 }
@@ -41,6 +46,10 @@ export function $isTextNode(node: NodeBase | null | undefined): node is TextNode
 
 export function $isLineBreakNode(node: NodeBase | null | undefined): node is LineBreakNode {
   return node instanceof LineBreakNode;
+}
+
+export function $isTabNode(node: NodeBase | null | undefined): node is TabNode {
+  return node instanceof TabNode;
 }
 
 function getParentElement(nodeMap: NodeMap, node: NodeBase): ElementNode | null {

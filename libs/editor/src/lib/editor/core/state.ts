@@ -3,10 +3,13 @@ import { createNodeKey, NodeBase, NodeKey, NodeMap } from './nodes/node';
 import { cloneMap } from './gen-map';
 import { TextNode } from './nodes/text-node';
 import { LineBreakNode } from './nodes/line-break-node';
+import { TabNode } from './nodes/tab-node';
 import {
   $createParagraphNode,
   $createRootNode,
   $createTextNode,
+  $createLineBreakNode,
+  $createTabNode,
   $isElementNode,
   $isTextNode,
   insertAfter as insertAfterUtil,
@@ -593,6 +596,90 @@ export class EditorState {
   }
 
   /**
+   * Split the text node at the selection and insert a line break.
+   */
+  insertLineBreakAtRange(range: TextRange): TextRange | null {
+    let workingRange = range;
+    if (!range.isCollapsed) {
+      const collapsePoint = this.deleteTextInRange(range);
+      workingRange = createTextRange(collapsePoint, collapsePoint, false);
+    }
+
+    const point = workingRange.anchor;
+    const textNode = this.nodes.get(point.key);
+    if (!$isTextNode(textNode) || !textNode.parent) {
+      return null;
+    }
+
+    const clampedOffset = Math.min(Math.max(point.offset, 0), textNode.text.length);
+    const lineBreak = $createLineBreakNode(createNodeKey());
+    this.registerNode(lineBreak);
+
+    if (clampedOffset === 0) {
+      this.insertBefore(textNode, lineBreak);
+      return createTextRange({ key: textNode.key, offset: 0 }, { key: textNode.key, offset: 0 }, false);
+    }
+
+    if (clampedOffset === textNode.text.length) {
+      this.insertAfter(textNode, lineBreak);
+      const emptyText = $createTextNode(createNodeKey(), '', textNode.format);
+      this.registerNode(emptyText);
+      this.insertAfter(lineBreak, emptyText);
+      return createTextRange({ key: emptyText.key, offset: 0 }, { key: emptyText.key, offset: 0 }, false);
+    }
+
+    const { right } = this.splitTextNodeAt(textNode, clampedOffset);
+    this.insertAfter(textNode, lineBreak);
+    
+    if (right) {
+      return createTextRange({ key: right.key, offset: 0 }, { key: right.key, offset: 0 }, false);
+    }
+    return null;
+  }
+
+  /**
+   * Split the text node at the selection and insert a tab node.
+   */
+  insertTabAtRange(range: TextRange): TextRange | null {
+    let workingRange = range;
+    if (!range.isCollapsed) {
+      const collapsePoint = this.deleteTextInRange(range);
+      workingRange = createTextRange(collapsePoint, collapsePoint, false);
+    }
+
+    const point = workingRange.anchor;
+    const textNode = this.nodes.get(point.key);
+    if (!$isTextNode(textNode) || !textNode.parent) {
+      return null;
+    }
+
+    const clampedOffset = Math.min(Math.max(point.offset, 0), textNode.text.length);
+    const tabNode = $createTabNode(createNodeKey());
+    this.registerNode(tabNode);
+
+    if (clampedOffset === 0) {
+      this.insertBefore(textNode, tabNode);
+      return createTextRange({ key: textNode.key, offset: 0 }, { key: textNode.key, offset: 0 }, false);
+    }
+
+    if (clampedOffset === textNode.text.length) {
+      this.insertAfter(textNode, tabNode);
+      const emptyText = $createTextNode(createNodeKey(), '', textNode.format);
+      this.registerNode(emptyText);
+      this.insertAfter(tabNode, emptyText);
+      return createTextRange({ key: emptyText.key, offset: 0 }, { key: emptyText.key, offset: 0 }, false);
+    }
+
+    const { right } = this.splitTextNodeAt(textNode, clampedOffset);
+    this.insertAfter(textNode, tabNode);
+    
+    if (right) {
+      return createTextRange({ key: right.key, offset: 0 }, { key: right.key, offset: 0 }, false);
+    }
+    return null;
+  }
+
+  /**
    * Delete the text covered by `range` and return the collapse point at the
    * start of the deleted span.
    */
@@ -1134,6 +1221,8 @@ function materializeNode(record: SerializedNode): NodeBase {
       return TextNode.importJSON(record);
     case 'linebreak':
       return LineBreakNode.importJSON(record);
+    case 'tab':
+      return TabNode.importJSON(record);
     default: {
       const exhaustive: never = record;
       throw new InvalidSnapshotError(

@@ -43,11 +43,14 @@ export interface SerializedTextNode extends SerializedBaseNode<'text'> {
 
 export type SerializedLineBreakNode = SerializedBaseNode<'linebreak'>
 
+export type SerializedTabNode = SerializedBaseNode<'tab'>
+
 export type SerializedNode =
   | SerializedRootNode
   | SerializedParagraphNode
   | SerializedTextNode
-  | SerializedLineBreakNode;
+  | SerializedLineBreakNode
+  | SerializedTabNode;
 
 export interface EditorStateSnapshot {
   version: number;
@@ -157,7 +160,8 @@ function validateNodeRecord(key: string, record: unknown): void {
       }
       break;
     }
-    case 'linebreak': {
+    case 'linebreak':
+    case 'tab': {
       // no payload to validate
       break;
     }

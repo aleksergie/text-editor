@@ -1,6 +1,7 @@
 import { Provider } from '@angular/core';
 import { providePlugin } from '../angular/editor-plugins.token';
 import { FormattingKeyboardPlugin } from './formatting-keyboard.plugin';
+import { BasicKeyboardPlugin } from './basic-keyboard.plugin';
 import { SelectionSyncPlugin } from './selection-sync.plugin';
 
 /**
@@ -13,6 +14,10 @@ import { SelectionSyncPlugin } from './selection-sync.plugin';
  */
 export function provideFormattingKeyboardPlugin(): Provider {
   return providePlugin(FormattingKeyboardPlugin);
+}
+
+export function provideBasicKeyboardPlugin(): Provider {
+  return providePlugin(BasicKeyboardPlugin);
 }
 
 /**

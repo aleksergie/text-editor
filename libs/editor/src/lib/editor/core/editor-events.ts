@@ -2,6 +2,7 @@ import {
   BEFORE_INPUT_COMMAND,
   CommandPriority,
   DELETE_CHARACTER,
+  INSERT_LINE_BREAK,
   INSERT_PARAGRAPH,
   INSERT_TEXT,
   SET_TEXT_CONTENT,
@@ -38,6 +39,9 @@ export function registerInputCommandHandlers(editor: Editor): void {
         case 'insertParagraph':
           event.preventDefault();
           return editor.dispatchCommand(INSERT_PARAGRAPH, { range });
+        case 'insertLineBreak':
+          event.preventDefault();
+          return editor.dispatchCommand(INSERT_LINE_BREAK, { range });
         default:
           return false;
       }

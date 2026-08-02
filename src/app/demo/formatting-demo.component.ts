@@ -5,6 +5,7 @@ import {
   FormattingToolbarComponent,
   provideEditor,
   provideFormattingKeyboardPlugin,
+  provideBasicKeyboardPlugin,
   provideSelectionSyncPlugin,
 } from '@text-editor/editor';
 import { SelectionDebugPanelComponent } from './selection-debug-panel.component';
@@ -21,7 +22,12 @@ import { SelectionDebugPanelComponent } from './selection-debug-panel.component'
 @Component({
   selector: 'app-formatting-demo',
   imports: [CommonModule, ContentEditableDirective, FormattingToolbarComponent, SelectionDebugPanelComponent],
-  providers: [provideEditor(), provideFormattingKeyboardPlugin(), provideSelectionSyncPlugin()],
+  providers: [
+    provideEditor(),
+    provideFormattingKeyboardPlugin(),
+    provideBasicKeyboardPlugin(),
+    provideSelectionSyncPlugin(),
+  ],
   template: `
     <div class="formatting-demo">
       <h1 class="formatting-demo__title">Rich text formatting demo</h1>

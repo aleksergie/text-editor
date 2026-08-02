@@ -7,6 +7,7 @@ export { EDITOR_PLUGINS, providePlugin } from './lib/editor/angular/editor-plugi
 
 export {
   provideFormattingKeyboardPlugin,
+  provideBasicKeyboardPlugin,
   provideSelectionSyncPlugin,
 } from './lib/editor/plugins';
 
@@ -58,10 +59,12 @@ export type {
   SerializedParagraphNode,
   SerializedTextNode,
   SerializedLineBreakNode,
+  SerializedTabNode,
 } from './lib/editor/core/snapshot';
 
 export { LineBreakNode } from './lib/editor/core/nodes/line-break-node';
-export { $createLineBreakNode } from './lib/editor/core/nodes/node-utils';
+export { TabNode } from './lib/editor/core/nodes/tab-node';
+export { $createLineBreakNode, $createTabNode } from './lib/editor/core/nodes/node-utils';
 
 export { toPlainText, fromPlainText } from './lib/editor/core/plain-text';
 
@@ -72,7 +75,9 @@ export {
   CommandPriority,
   DELETE_CHARACTER,
   FORMAT_TEXT,
+  INSERT_LINE_BREAK,
   INSERT_PARAGRAPH,
+  INSERT_TAB,
   INSERT_TEXT,
   SET_TEXT_CONTENT,
   createCommand,

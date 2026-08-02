@@ -7,7 +7,9 @@ import {
   DELETE_CHARACTER,
   EditorCommand,
   FORMAT_TEXT,
+  INSERT_LINE_BREAK,
   INSERT_PARAGRAPH,
+  INSERT_TAB,
   INSERT_TEXT,
   SET_TEXT_CONTENT,
 } from './commands';
@@ -30,6 +32,7 @@ import {
   SelectionSource,
   TextRange,
   rangesEqual,
+  createTextRange,
 } from './selection';
 import { EditorState } from './state';
 
@@ -607,6 +610,56 @@ export class Editor {
           range,
           (state, r) => state.insertParagraphAtRange(r),
           (state) => state.insertParagraph(),
+        );
+        return true;
+      },
+      CommandPriority.Editor,
+    );
+
+    this.registerCommand(
+      INSERT_LINE_BREAK,
+      ({ range }) => {
+        this.runRangeAwareUpdate(
+          range,
+          (state, r) => state.insertLineBreakAtRange(r),
+          (state) => {
+            // legacy path without range
+            const lastText = state.getLastTextNode();
+            if (lastText) {
+              state.insertLineBreakAtRange(
+                createTextRange(
+                  { key: lastText.key, offset: lastText.text.length },
+                  { key: lastText.key, offset: lastText.text.length },
+                  false,
+                ),
+              );
+            }
+          },
+        );
+        return true;
+      },
+      CommandPriority.Editor,
+    );
+
+    this.registerCommand(
+      INSERT_TAB,
+      ({ range }) => {
+        this.runRangeAwareUpdate(
+          range,
+          (state, r) => state.insertTabAtRange(r),
+          (state) => {
+            // legacy path without range
+            const lastText = state.getLastTextNode();
+            if (lastText) {
+              state.insertTabAtRange(
+                createTextRange(
+                  { key: lastText.key, offset: lastText.text.length },
+                  { key: lastText.key, offset: lastText.text.length },
+                  false,
+                ),
+              );
+            }
+          },
         );
         return true;
       },
