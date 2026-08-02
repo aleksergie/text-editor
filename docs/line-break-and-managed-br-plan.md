@@ -45,6 +45,11 @@ This document outlines the implementation plan for handling line breaks in the e
 - **Selection Bridge**: Update the DOM-to-model selection logic. If the browser reports a native selection anchoring on or inside a managed `<br>`, map that selection to `offset: 0` of the parent `ElementNode`.
 - **Mutation Observer**: Update the mutation observer (or prepare for its implementation per `mutation-observer-roadmap.md`) to ignore DOM additions/removals involving managed line breaks, ensuring they are not mistakenly stripped as foreign HTML.
 
+### Phase 4: Commands and Keybindings
+
+- Implement a command (e.g., `INSERT_LINE_BREAK_COMMAND`) to use `$createLineBreakNode` and bind it to `Shift+Enter`.
+- Implement a command (e.g., `INSERT_TAB_COMMAND`) and logic regarding this command to handle tab insertion.
+
 ## Acceptance Criteria
 
 - [ ] `$createLineBreakNode()` creates a valid leaf node.
@@ -54,3 +59,5 @@ This document outlines the implementation plan for handling line breaks in the e
 - [ ] Deleting all text in a paragraph restores the managed `<br>` tag.
 - [ ] Clicking on an empty paragraph successfully places the cursor inside it.
 - [ ] Serializing and deserializing state containing `LineBreakNode`s works flawlessly.
+- [ ] `Shift+Enter` successfully triggers the line break command.
+- [ ] Tab command is implemented and handles tab insertion correctly.
