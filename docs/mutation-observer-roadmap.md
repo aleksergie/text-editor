@@ -2,7 +2,7 @@
 
 ## Status
 
-Phase 1 shipped (2026-05-27), Phase 2 shipped (2026-07-16), and Phase 3 shipped (2026-07-19). Phases 4–5 are future work. Phase 1 adds
+Phase 1 shipped (2026-05-27), Phase 2 shipped (2026-07-16), Phase 3 shipped (2026-07-19), and Phase 5 shipped (2026-08-01). Phase 4 is future work. Phase 1 adds
 observer scaffolding and the reconciler pause/resume contract without
 changing editing behavior.
 
@@ -530,6 +530,8 @@ Acceptance:
   of sync after composition ends.
 
 ### Phase 5 - Recovery And Teardown Polish
+
+**Status: Shipped (2026-08-01).**
 
 Goal: make the defense layer robust to its own bugs.
 

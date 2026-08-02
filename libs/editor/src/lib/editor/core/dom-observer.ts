@@ -46,6 +46,7 @@ export class DomObserver {
   }
 
   stop(): void {
+    this.drain();
     this.observer?.disconnect();
     this.root = null;
     this.pauseDepth = 0;

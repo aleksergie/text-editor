@@ -993,6 +993,47 @@ describe('Editor selection state', () => {
       expect(onMutation).toHaveBeenCalledTimes(1);
     });
 
+    describe('Phase 5: Recovery and Teardown', () => {
+      it('recovers from callback exceptions without tearing down the observer', async () => {
+        const editor = createEditor();
+        const root = document.createElement('div');
+        editor.setRoot(root);
+        
+        const reconcileSpy = jest.spyOn(editor, 'reconcileFromScratch');
+        const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+        const flushSpy = jest.spyOn(domMutations, 'flushMutations').mockImplementationOnce(() => {
+          throw new Error('Simulated throw');
+        });
+        
+        // Trigger a mutation that will be caught by the spy and throw
+        root.appendChild(document.createElement('div'));
+        await flushMutationObserver();
+        
+        expect(consoleSpy).toHaveBeenCalled();
+        expect(reconcileSpy).toHaveBeenCalledTimes(1);
 
+        // Assert the observer was re-armed and still catches new mutations
+        root.appendChild(document.createElement('span'));
+        await flushMutationObserver();
+        expect(flushSpy).toHaveBeenCalledTimes(2); // Second call should not throw
+        
+        consoleSpy.mockRestore();
+        reconcileSpy.mockRestore();
+        flushSpy.mockRestore();
+      });
+
+      it('setRoot(null) removes observer; subsequent appendChild on detached root does not schedule work', async () => {
+        const onMutation = jest.fn();
+        const mounted = createEditor({ domObserverCallback: onMutation });
+        const root = document.createElement('div');
+        mounted.setRoot(root);
+        mounted.setRoot(null);
+
+        root.appendChild(document.createElement('span'));
+        await flushMutationObserver();
+
+        expect(onMutation).not.toHaveBeenCalled();
+      });
+    });
   });
 });

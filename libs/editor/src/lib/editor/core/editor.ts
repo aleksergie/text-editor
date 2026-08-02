@@ -113,7 +113,18 @@ export class Editor {
   constructor(options?: CreateEditorOptions) {
     this.domObserver = new DomObserver(
       options?.domObserverCallback ??
-        ((mutations, takeRecords) => flushMutations(this, mutations)),
+        ((mutations) => {
+          try {
+            flushMutations(this, mutations);
+          } catch (e) {
+            console.error('Mutation defense threw:', e);
+            this.domObserver.stop();
+            if (this.root) {
+              this.domObserver.start(this.root);
+            }
+            this.reconcileFromScratch();
+          }
+        }),
     );
     this.registerDefaultHandlers();
     registerInputCommandHandlers(this);
