@@ -57,7 +57,11 @@ export type {
   SerializedRootNode,
   SerializedParagraphNode,
   SerializedTextNode,
+  SerializedLineBreakNode,
 } from './lib/editor/core/snapshot';
+
+export { LineBreakNode } from './lib/editor/core/nodes/line-break-node';
+export { $createLineBreakNode } from './lib/editor/core/nodes/node-utils';
 
 export { toPlainText, fromPlainText } from './lib/editor/core/plain-text';
 

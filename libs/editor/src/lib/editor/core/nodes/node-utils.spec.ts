@@ -1,4 +1,6 @@
 import { NodeMap } from './node';
+import { createEditor } from '../editor';
+import { $setActiveContext, $clearActiveContext, $getActiveEditorState } from '../active-context';
 import {
   $createParagraphNode,
   $createRootNode,
@@ -40,6 +42,12 @@ function collectChildrenKeys(nodeMap: NodeMap, parentKey: string): string[] {
 }
 
 describe('node-utils type guards', () => {
+  beforeEach(() => {
+    const editor = createEditor();
+    const state = editor.getEditorState();
+    $setActiveContext(editor, state);
+  });
+  afterEach(() => $clearActiveContext());
   it('$isRootNode recognizes RootNode only', () => {
     expect($isRootNode($createRootNode('r'))).toBe(true);
     expect($isRootNode($createParagraphNode('p'))).toBe(false);
@@ -61,8 +69,14 @@ describe('node-utils type guards', () => {
 });
 
 describe('node-utils insertAfter', () => {
+  beforeEach(() => {
+    const editor = createEditor();
+    const state = editor.getEditorState();
+    $setActiveContext(editor, state);
+  });
+  afterEach(() => $clearActiveContext());
   it('inserts a node after the target and updates the linked list', () => {
-    const nodes: NodeMap = new Map();
+    const nodes = $getActiveEditorState()!.nodes;
     const paragraph = buildParagraphWithChildren(nodes, 'p1', ['a', 'b', 'c']);
     const n = $createTextNode('x', 'x');
     nodes.set(n.key, n);
@@ -70,23 +84,23 @@ describe('node-utils insertAfter', () => {
     insertAfter(nodes, nodes.get('b')!, n);
 
     expect(collectChildrenKeys(nodes, 'p1')).toEqual(['a', 'b', 'x', 'c']);
-    expect(paragraph.__size).toBe(4);
+    expect((nodes.get('p1') as any).__size).toBe(4);
   });
 
   it('updates last pointer when inserting after the current tail', () => {
-    const nodes: NodeMap = new Map();
+    const nodes = $getActiveEditorState()!.nodes;
     const paragraph = buildParagraphWithChildren(nodes, 'p1', ['a', 'b']);
     const n = $createTextNode('z', 'z');
     nodes.set(n.key, n);
 
     insertAfter(nodes, nodes.get('b')!, n);
 
-    expect(paragraph.__last).toBe('z');
+    expect((nodes.get('p1') as any).__last).toBe('z');
     expect(collectChildrenKeys(nodes, 'p1')).toEqual(['a', 'b', 'z']);
   });
 
   it('is a no-op when target === nodeToInsert', () => {
-    const nodes: NodeMap = new Map();
+    const nodes = $getActiveEditorState()!.nodes;
     buildParagraphWithChildren(nodes, 'p1', ['a', 'b']);
     const a = nodes.get('a')!;
 
@@ -95,7 +109,7 @@ describe('node-utils insertAfter', () => {
   });
 
   it('detaches the node from its current parent before re-inserting', () => {
-    const nodes: NodeMap = new Map();
+    const nodes = $getActiveEditorState()!.nodes;
     buildParagraphWithChildren(nodes, 'p1', ['a', 'b']);
     const p2 = buildParagraphWithChildren(nodes, 'p2', ['x']);
     const root = $createRootNode('root');
@@ -112,7 +126,7 @@ describe('node-utils insertAfter', () => {
   });
 
   it('does nothing when target has no parent', () => {
-    const nodes: NodeMap = new Map();
+    const nodes = $getActiveEditorState()!.nodes;
     const orphan = $createTextNode('orphan', '');
     const candidate = $createTextNode('cand', '');
     nodes.set(orphan.key, orphan);
@@ -124,38 +138,44 @@ describe('node-utils insertAfter', () => {
 });
 
 describe('node-utils remove', () => {
+  beforeEach(() => {
+    const editor = createEditor();
+    const state = editor.getEditorState();
+    $setActiveContext(editor, state);
+  });
+  afterEach(() => $clearActiveContext());
   it('removes head and updates parent.first', () => {
-    const nodes: NodeMap = new Map();
+    const nodes = $getActiveEditorState()!.nodes;
     const paragraph = buildParagraphWithChildren(nodes, 'p1', ['a', 'b', 'c']);
     remove(nodes, nodes.get('a')!);
 
-    expect(paragraph.__first).toBe('b');
-    expect(paragraph.__size).toBe(2);
+    expect((nodes.get('p1') as any).__first).toBe('b');
+    expect((nodes.get('p1') as any).__size).toBe(2);
     expect(collectChildrenKeys(nodes, 'p1')).toEqual(['b', 'c']);
   });
 
   it('removes tail and updates parent.last', () => {
-    const nodes: NodeMap = new Map();
+    const nodes = $getActiveEditorState()!.nodes;
     const paragraph = buildParagraphWithChildren(nodes, 'p1', ['a', 'b', 'c']);
     remove(nodes, nodes.get('c')!);
 
-    expect(paragraph.__last).toBe('b');
-    expect(paragraph.__size).toBe(2);
+    expect((nodes.get('p1') as any).__last).toBe('b');
+    expect((nodes.get('p1') as any).__size).toBe(2);
     expect(collectChildrenKeys(nodes, 'p1')).toEqual(['a', 'b']);
   });
 
   it('removes middle node and re-links neighbors', () => {
-    const nodes: NodeMap = new Map();
+    const nodes = $getActiveEditorState()!.nodes;
     const paragraph = buildParagraphWithChildren(nodes, 'p1', ['a', 'b', 'c']);
     remove(nodes, nodes.get('b')!);
 
     expect(nodes.get('a')?.next).toBe('c');
     expect(nodes.get('c')?.prev).toBe('a');
-    expect(paragraph.__size).toBe(2);
+    expect((nodes.get('p1') as any).__size).toBe(2);
   });
 
   it('detaches the node entirely (null parent/prev/next)', () => {
-    const nodes: NodeMap = new Map();
+    const nodes = $getActiveEditorState()!.nodes;
     buildParagraphWithChildren(nodes, 'p1', ['a']);
     const a = nodes.get('a')!;
     remove(nodes, a);
@@ -166,7 +186,7 @@ describe('node-utils remove', () => {
   });
 
   it('handles removing an orphan node gracefully', () => {
-    const nodes: NodeMap = new Map();
+    const nodes = $getActiveEditorState()!.nodes;
     const orphan = $createTextNode('o', '');
     nodes.set(orphan.key, orphan);
     expect(() => remove(nodes, orphan)).not.toThrow();
@@ -174,8 +194,14 @@ describe('node-utils remove', () => {
 });
 
 describe('node-utils replace', () => {
+  beforeEach(() => {
+    const editor = createEditor();
+    const state = editor.getEditorState();
+    $setActiveContext(editor, state);
+  });
+  afterEach(() => $clearActiveContext());
   it('replaces head', () => {
-    const nodes: NodeMap = new Map();
+    const nodes = $getActiveEditorState()!.nodes;
     const paragraph = buildParagraphWithChildren(nodes, 'p1', ['a', 'b']);
     const rep = $createTextNode('rep', '');
     nodes.set(rep.key, rep);
@@ -183,11 +209,11 @@ describe('node-utils replace', () => {
     replace(nodes, nodes.get('a')!, rep);
 
     expect(collectChildrenKeys(nodes, 'p1')).toEqual(['rep', 'b']);
-    expect(paragraph.__first).toBe('rep');
+    expect((nodes.get('p1') as any).__first).toBe('rep');
   });
 
   it('replaces tail', () => {
-    const nodes: NodeMap = new Map();
+    const nodes = $getActiveEditorState()!.nodes;
     const paragraph = buildParagraphWithChildren(nodes, 'p1', ['a', 'b']);
     const rep = $createTextNode('rep', '');
     nodes.set(rep.key, rep);
@@ -195,11 +221,11 @@ describe('node-utils replace', () => {
     replace(nodes, nodes.get('b')!, rep);
 
     expect(collectChildrenKeys(nodes, 'p1')).toEqual(['a', 'rep']);
-    expect(paragraph.__last).toBe('rep');
+    expect((nodes.get('p1') as any).__last).toBe('rep');
   });
 
   it('replaces middle', () => {
-    const nodes: NodeMap = new Map();
+    const nodes = $getActiveEditorState()!.nodes;
     buildParagraphWithChildren(nodes, 'p1', ['a', 'b', 'c']);
     const rep = $createTextNode('rep', '');
     nodes.set(rep.key, rep);
@@ -210,7 +236,7 @@ describe('node-utils replace', () => {
   });
 
   it('detaches the replaced node', () => {
-    const nodes: NodeMap = new Map();
+    const nodes = $getActiveEditorState()!.nodes;
     buildParagraphWithChildren(nodes, 'p1', ['a']);
     const rep = $createTextNode('rep', '');
     nodes.set(rep.key, rep);
@@ -224,7 +250,7 @@ describe('node-utils replace', () => {
   });
 
   it('is a no-op when target === replacement', () => {
-    const nodes: NodeMap = new Map();
+    const nodes = $getActiveEditorState()!.nodes;
     buildParagraphWithChildren(nodes, 'p1', ['a']);
     const a = nodes.get('a')!;
 

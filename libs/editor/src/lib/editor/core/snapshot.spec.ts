@@ -11,6 +11,8 @@ import {
   validateSnapshot,
 } from './snapshot';
 import { EditorState } from './state';
+import { createEditor } from './editor';
+import { $setActiveContext } from './active-context';
 
 function buildMultiParagraphState(): EditorState {
   const nodes: NodeMap = new Map();
@@ -22,10 +24,27 @@ function buildMultiParagraphState(): EditorState {
 
   [root, p1, t1, p2, t2].forEach((n) => nodes.set(n.key, n));
 
-  p1.append(nodes, t1);
-  p2.append(nodes, t2);
-  root.append(nodes, p1);
-  root.append(nodes, p2);
+  root.__first = p1.key;
+  root.__last = p2.key;
+  root.__size = 2;
+
+  p1.__parent = root.key;
+  p1.__prev = null;
+  p1.__next = p2.key;
+  p1.__first = t1.key;
+  p1.__last = t1.key;
+  p1.__size = 1;
+
+  t1.__parent = p1.key;
+
+  p2.__parent = root.key;
+  p2.__prev = p1.key;
+  p2.__next = null;
+  p2.__first = t2.key;
+  p2.__last = t2.key;
+  p2.__size = 1;
+
+  t2.__parent = p2.key;
 
   return new EditorState(nodes, root.key);
 }
@@ -95,8 +114,12 @@ describe('EditorState.fromJSON', () => {
   it('yields a working state usable by structural helpers', () => {
     const snapshot = buildMultiParagraphState().toJSON();
     const restored = EditorState.fromJSON(snapshot);
+    const editor = createEditor();
 
+    $setActiveContext(editor, restored);
     restored.setText('changed');
+    $setActiveContext(null as any, null as any);
+    
     // setText targets the first text node, so only t1 should have changed.
     const t1 = restored.nodes.get('t1');
     expect((t1 as unknown as { text: string }).text).toBe('changed');

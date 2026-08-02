@@ -1,6 +1,7 @@
 import { ElementNode, ParagraphNode, RootNode } from './element-node';
 import { NodeBase, NodeKey, NodeMap } from './node';
 import { TextNode } from './text-node';
+import { LineBreakNode } from './line-break-node';
 
 export function $createRootNode(key: NodeKey): RootNode {
   return new RootNode(key);
@@ -22,6 +23,10 @@ export function $createTextNode(
   return new TextNode(key, text, format);
 }
 
+export function $createLineBreakNode(key: NodeKey): LineBreakNode {
+  return new LineBreakNode(key);
+}
+
 export function $isRootNode(node: NodeBase | null | undefined): node is RootNode {
   return node instanceof RootNode;
 }
@@ -34,11 +39,16 @@ export function $isTextNode(node: NodeBase | null | undefined): node is TextNode
   return node instanceof TextNode;
 }
 
+export function $isLineBreakNode(node: NodeBase | null | undefined): node is LineBreakNode {
+  return node instanceof LineBreakNode;
+}
+
 function getParentElement(nodeMap: NodeMap, node: NodeBase): ElementNode | null {
-  if (!node.__parent) {
+  const latestNode = nodeMap.get(node.key) || node;
+  if (!latestNode.__parent) {
     return null;
   }
-  const parent = nodeMap.get(node.__parent);
+  const parent = nodeMap.get(latestNode.__parent);
   return parent instanceof ElementNode ? parent : null;
 }
 
@@ -47,34 +57,39 @@ export function insertAfter(nodeMap: NodeMap, target: NodeBase, nodeToInsert: No
     return;
   }
 
-  const parent = getParentElement(nodeMap, target);
+  const latestTarget = nodeMap.get(target.key) || target;
+  const latestNodeToInsert = nodeMap.get(nodeToInsert.key) || nodeToInsert;
+
+  const parent = getParentElement(nodeMap, latestTarget);
   if (!parent) {
     return;
   }
 
-  if (nodeToInsert.__parent) {
-    remove(nodeMap, nodeToInsert);
+  if (latestNodeToInsert.__parent) {
+    remove(nodeMap, latestNodeToInsert);
   }
 
-  const nextKey = target.__next;
-  const insertKey = nodeToInsert.__key;
+  const nextKey = latestTarget.__next;
+  const insertKey = latestNodeToInsert.__key;
 
-  nodeToInsert.__parent = parent.__key;
-  nodeToInsert.__prev = target.__key;
-  nodeToInsert.__next = nextKey;
+  const writableNodeToInsert = latestNodeToInsert.getWritable();
+  writableNodeToInsert.__parent = parent.__key;
+  writableNodeToInsert.__prev = latestTarget.__key;
+  writableNodeToInsert.__next = nextKey;
 
-  target.__next = insertKey;
+  latestTarget.getWritable().__next = insertKey;
 
+  const writableParent = parent.getWritable();
   if (nextKey) {
     const next = nodeMap.get(nextKey);
     if (next) {
-      next.__prev = insertKey;
+      next.getWritable().__prev = insertKey;
     }
   } else {
-    parent.__last = insertKey;
+    writableParent.__last = insertKey;
   }
 
-  parent.__size += 1;
+  writableParent.__size += 1;
 }
 
 export function insertBefore(nodeMap: NodeMap, target: NodeBase, nodeToInsert: NodeBase) {
@@ -82,71 +97,79 @@ export function insertBefore(nodeMap: NodeMap, target: NodeBase, nodeToInsert: N
     return;
   }
 
-  const parent = getParentElement(nodeMap, target);
+  const latestTarget = nodeMap.get(target.key) || target;
+  const latestNodeToInsert = nodeMap.get(nodeToInsert.key) || nodeToInsert;
+
+  const parent = getParentElement(nodeMap, latestTarget);
   if (!parent) {
     return;
   }
 
-  if (nodeToInsert.__parent) {
-    remove(nodeMap, nodeToInsert);
+  if (latestNodeToInsert.__parent) {
+    remove(nodeMap, latestNodeToInsert);
   }
 
-  const prevKey = target.__prev;
-  const insertKey = nodeToInsert.__key;
+  const prevKey = latestTarget.__prev;
+  const insertKey = latestNodeToInsert.__key;
 
-  nodeToInsert.__parent = parent.__key;
-  nodeToInsert.__prev = prevKey;
-  nodeToInsert.__next = target.__key;
+  const writableNodeToInsert = latestNodeToInsert.getWritable();
+  writableNodeToInsert.__parent = parent.__key;
+  writableNodeToInsert.__prev = prevKey;
+  writableNodeToInsert.__next = latestTarget.__key;
 
-  target.__prev = insertKey;
+  latestTarget.getWritable().__prev = insertKey;
 
+  const writableParent = parent.getWritable();
   if (prevKey) {
     const prev = nodeMap.get(prevKey);
     if (prev) {
-      prev.__next = insertKey;
+      prev.getWritable().__next = insertKey;
     }
   } else {
-    parent.__first = insertKey;
+    writableParent.__first = insertKey;
   }
 
-  parent.__size += 1;
+  writableParent.__size += 1;
 }
 
 export function remove(nodeMap: NodeMap, node: NodeBase) {
-  const parent = getParentElement(nodeMap, node);
+  const latestNode = nodeMap.get(node.key) || node;
+  const writableNode = latestNode.getWritable();
+  const parent = getParentElement(nodeMap, latestNode);
   if (!parent) {
-    node.__parent = null;
-    node.__prev = null;
-    node.__next = null;
+    writableNode.__parent = null;
+    writableNode.__prev = null;
+    writableNode.__next = null;
     return;
   }
 
-  const prevKey = node.__prev;
-  const nextKey = node.__next;
+  const prevKey = latestNode.__prev;
+  const nextKey = latestNode.__next;
+  const writableParent = parent.getWritable();
 
   if (prevKey) {
     const prev = nodeMap.get(prevKey);
     if (prev) {
-      prev.__next = nextKey;
+      prev.getWritable().__next = nextKey;
     }
   } else {
-    parent.__first = nextKey;
+    writableParent.__first = nextKey;
   }
 
   if (nextKey) {
     const next = nodeMap.get(nextKey);
     if (next) {
-      next.__prev = prevKey;
+      next.getWritable().__prev = prevKey;
     }
   } else {
-    parent.__last = prevKey;
+    writableParent.__last = prevKey;
   }
 
-  parent.__size = Math.max(0, parent.__size - 1);
+  writableParent.__size = Math.max(0, parent.__size - 1);
 
-  node.__parent = null;
-  node.__prev = null;
-  node.__next = null;
+  writableNode.__parent = null;
+  writableNode.__prev = null;
+  writableNode.__next = null;
 }
 
 export function replace(nodeMap: NodeMap, target: NodeBase, replacement: NodeBase) {
@@ -154,42 +177,49 @@ export function replace(nodeMap: NodeMap, target: NodeBase, replacement: NodeBas
     return;
   }
 
-  const parent = getParentElement(nodeMap, target);
+  const latestTarget = nodeMap.get(target.key) || target;
+  const latestReplacement = nodeMap.get(replacement.key) || replacement;
+
+  const parent = getParentElement(nodeMap, latestTarget);
   if (!parent) {
     return;
   }
 
-  if (replacement.__parent) {
-    remove(nodeMap, replacement);
+  if (latestReplacement.__parent) {
+    remove(nodeMap, latestReplacement);
   }
 
-  const prevKey = target.__prev;
-  const nextKey = target.__next;
-  const replacementKey = replacement.__key;
+  const prevKey = latestTarget.__prev;
+  const nextKey = latestTarget.__next;
+  const replacementKey = latestReplacement.__key;
+  
+  const writableParent = parent.getWritable();
 
   if (prevKey) {
     const prev = nodeMap.get(prevKey);
     if (prev) {
-      prev.__next = replacementKey;
+      prev.getWritable().__next = replacementKey;
     }
   } else {
-    parent.__first = replacementKey;
+    writableParent.__first = replacementKey;
   }
 
   if (nextKey) {
     const next = nodeMap.get(nextKey);
     if (next) {
-      next.__prev = replacementKey;
+      next.getWritable().__prev = replacementKey;
     }
   } else {
-    parent.__last = replacementKey;
+    writableParent.__last = replacementKey;
   }
 
-  replacement.__parent = parent.__key;
-  replacement.__prev = prevKey;
-  replacement.__next = nextKey;
+  const writableReplacement = latestReplacement.getWritable();
+  writableReplacement.__parent = parent.__key;
+  writableReplacement.__prev = prevKey;
+  writableReplacement.__next = nextKey;
 
-  target.__parent = null;
-  target.__prev = null;
-  target.__next = null;
+  const writableTarget = latestTarget.getWritable();
+  writableTarget.__parent = null;
+  writableTarget.__prev = null;
+  writableTarget.__next = null;
 }

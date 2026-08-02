@@ -41,10 +41,13 @@ export interface SerializedTextNode extends SerializedBaseNode<'text'> {
   format?: number;
 }
 
+export type SerializedLineBreakNode = SerializedBaseNode<'linebreak'>
+
 export type SerializedNode =
   | SerializedRootNode
   | SerializedParagraphNode
-  | SerializedTextNode;
+  | SerializedTextNode
+  | SerializedLineBreakNode;
 
 export interface EditorStateSnapshot {
   version: number;
@@ -152,6 +155,10 @@ function validateNodeRecord(key: string, record: unknown): void {
           );
         }
       }
+      break;
+    }
+    case 'linebreak': {
+      // no payload to validate
       break;
     }
     default:

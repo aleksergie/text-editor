@@ -2,6 +2,7 @@ import { Editor } from './editor';
 import { getInnermostTextHolder } from './nodes/text-node';
 import { $isTextNode } from './nodes/node-utils';
 import { NodeKey } from './nodes/node';
+import { isManagedLineBreak } from './reconciler';
 
 function handleCharacterDataMutation(editor: Editor, mutation: MutationRecord, characterDataMutations: Map<NodeKey, string>): void {
   const pair = editor.nearestManagedDomPair(mutation.target);
@@ -34,9 +35,7 @@ function handleChildListMutation(editor: Editor, mutation: MutationRecord): { ne
     // Revert added nodes that are not managed by the editor
     for (let i = 0; i < mutation.addedNodes.length; i++) {
       const addedNode = mutation.addedNodes[i];
-      if (editor.keyForExactDomNode(addedNode) === null) {
-        // Not registered and not a managed line break (we don't have managed line breaks yet).
-        // Remove it.
+      if (editor.keyForExactDomNode(addedNode) === null && !isManagedLineBreak(addedNode)) {
         if (addedNode.parentNode) {
           addedNode.parentNode.removeChild(addedNode);
         }
@@ -46,9 +45,10 @@ function handleChildListMutation(editor: Editor, mutation: MutationRecord): { ne
 
   // Check removed nodes
   for (let i = 0; i < mutation.removedNodes.length; i++) {
-    // If it's not a managed line break (we don't have managed line breaks yet)
-    // and the target is a managed DOM pair, trigger full re-render.
-    needsFullRerender = true;
+    const removedNode = mutation.removedNodes[i];
+    if (!isManagedLineBreak(removedNode)) {
+      needsFullRerender = true;
+    }
   }
 
   return { needsFullRerender };

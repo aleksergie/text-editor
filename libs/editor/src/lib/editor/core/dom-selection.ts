@@ -1,5 +1,5 @@
 import type { Editor } from './editor';
-import { $isTextNode } from './nodes/node-utils';
+import { $isTextNode, $isElementNode } from './nodes/node-utils';
 import { getInnermostTextHolder } from './nodes/text-node';
 import { TextPoint, TextRange } from './selection';
 
@@ -59,12 +59,23 @@ function resolveModelPointToDom(editor: Editor, point: TextPoint): DomPoint | nu
     return null;
   }
 
-  const textNode = editor.getEditorState().nodes.get(point.key);
-  if (!$isTextNode(textNode)) {
+  const node = editor.getEditorState().nodes.get(point.key);
+  if (!node) {
     return null;
   }
 
-  return findDomPointInHost(host, point.offset, textNode.text.length);
+  if ($isElementNode(node)) {
+    if (node.__size === 0 && point.offset === 0) {
+      return { node: host, offset: 0 };
+    }
+    return null;
+  }
+
+  if (!$isTextNode(node)) {
+    return null;
+  }
+
+  return findDomPointInHost(host, point.offset, node.text.length);
 }
 
 /**

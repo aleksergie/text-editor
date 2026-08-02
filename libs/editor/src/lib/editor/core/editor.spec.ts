@@ -19,6 +19,7 @@ import {
 } from './selection';
 import { EditorState } from './state';
 import { TextFormat } from './text-format';
+import * as domMutations from './dom-mutations';
 
 /**
  * Helper: seed a text node and return a forward range inside it.
@@ -326,8 +327,9 @@ describe('Editor transaction API', () => {
 
   describe('setEditorState', () => {
     it('replaces current state with the given snapshot', () => {
-      const fresh = EditorState.createEmpty();
-      fresh.setText('swapped');
+      const temp = createEditor();
+      temp.update(s => s.setText('swapped'));
+      const fresh = temp.getEditorState();
 
       editor.setEditorState(fresh);
 
@@ -340,8 +342,9 @@ describe('Editor transaction API', () => {
       editor.registerUpdateListener(listener);
 
       const prev = editor.getEditorState();
-      const next = EditorState.createEmpty();
-      next.setText('next');
+      const temp = createEditor();
+      temp.update(s => s.setText('next'));
+      const next = temp.getEditorState();
 
       editor.setEditorState(next);
 
@@ -521,8 +524,9 @@ describe('Editor v1 core commands', () => {
 
   describe('APPLY_EDITOR_STATE', () => {
     it('replaces the current state with the supplied state', () => {
-      const externalState = EditorState.createEmpty();
-      externalState.setText('external');
+      const temp = createEditor();
+      temp.update(s => s.setText('external'));
+      const externalState = temp.getEditorState();
 
       editor.dispatchCommand(APPLY_EDITOR_STATE, externalState);
 
@@ -988,5 +992,7 @@ describe('Editor selection state', () => {
 
       expect(onMutation).toHaveBeenCalledTimes(1);
     });
+
+
   });
 });

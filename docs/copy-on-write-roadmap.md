@@ -5,8 +5,8 @@ node semantics. Drafted during the PR-2 review; not yet started.
 
 ## Status
 
-**Not started.** Sequenced after PR-1 (committed as `5892fc6`) and PR-2
-(in-flight on this branch). Resume here when ready to begin Phase A.
+**In progress.** Phase C (Active-context globals) is complete.
+Resume here when ready to begin Phase D.
 
 ## Why This Exists
 
@@ -212,7 +212,7 @@ shortcut available. They do the same thing internally.
 Each phase is independently verifiable - `npx nx test editor` should be green
 at the end of each. Phase boundaries are natural pause points for review.
 
-### Phase A - GenMap container (independent of `getWritable`)
+### Phase A - GenMap container (independent of `getWritable`) - **Shipped**
 
 - New file `libs/editor/src/lib/editor/core/gen-map.ts`. Port verbatim
   from [`packages/lexical/src/LexicalGenMap.ts`](https://github.com/facebook/lexical/blob/main/packages/lexical/src/LexicalGenMap.ts)
@@ -231,7 +231,7 @@ at the end of each. Phase boundaries are natural pause points for review.
 - **Independent value:** This phase delivers the container-level COW win
   on its own. If the rest of PR-3 stalls, Phase A still ships.
 
-### Phase B - `getWritable` infrastructure (no behavior change)
+### Phase B - `getWritable` infrastructure (no behavior change) - **Shipped**
 
 - Add `NodeBase.getWritable()`, `NodeBase.getLatest()`.
 - Add `static clone(node)` and `afterCloneFrom(prev)` to each node class
@@ -239,7 +239,7 @@ at the end of each. Phase boundaries are natural pause points for review.
 - Add `_cloneNotNeeded: Set<NodeKey>` to `EditorState`.
 - No existing call site uses any of this yet. Tests pass unchanged.
 
-### Phase C - Active-context globals
+### Phase C - Active-context globals - **Shipped**
 
 - New file `libs/editor/src/lib/editor/core/active-context.ts`:
   - `$setActiveContext(editor, state)`, `$clearActiveContext()`.

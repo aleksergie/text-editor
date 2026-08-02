@@ -1,5 +1,7 @@
 import { fromPlainText, toPlainText } from './plain-text';
 import { EditorState } from './state';
+import { createEditor } from './editor';
+import { $setActiveContext, $clearActiveContext } from './active-context';
 
 describe('toPlainText', () => {
   it('returns empty string for the baseline empty state', () => {
@@ -18,6 +20,11 @@ describe('toPlainText', () => {
 });
 
 describe('fromPlainText', () => {
+  beforeEach(() => {
+    const editor = createEditor();
+    $setActiveContext(editor, editor.getEditorState());
+  });
+  afterEach(() => $clearActiveContext());
   it('produces a single empty paragraph for empty input', () => {
     const state = fromPlainText('');
     expect(state.getText()).toBe('');

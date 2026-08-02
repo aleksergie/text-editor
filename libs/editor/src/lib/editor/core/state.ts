@@ -1,6 +1,8 @@
 import { ElementNode, ParagraphNode, RootNode } from './nodes/element-node';
 import { createNodeKey, NodeBase, NodeKey, NodeMap } from './nodes/node';
+import { cloneMap } from './gen-map';
 import { TextNode } from './nodes/text-node';
+import { LineBreakNode } from './nodes/line-break-node';
 import {
   $createParagraphNode,
   $createRootNode,
@@ -52,6 +54,7 @@ export class EditorState {
    */
   private readonly dirtyElements: Map<NodeKey, boolean>;
   private dirtyType: DirtyType;
+  _cloneNotNeeded: Set<NodeKey> = new Set();
 
   constructor(
     public readonly nodes: NodeMap,
@@ -80,21 +83,28 @@ export class EditorState {
     nodes.set(paragraph.key, paragraph);
     nodes.set(text.key, text);
 
-    root.append(nodes, paragraph);
-    paragraph.append(nodes, text);
+    root.__first = paragraph.key;
+    root.__last = paragraph.key;
+    root.__size = 1;
+
+    paragraph.__parent = root.key;
+    paragraph.__first = text.key;
+    paragraph.__last = text.key;
+    paragraph.__size = 1;
+
+    text.__parent = paragraph.key;
 
     return new EditorState(nodes, root.key);
   }
 
   clone(): EditorState {
-    // Dirty bookkeeping is transaction-scoped and should not leak into the next update.
-    return new EditorState(new Map(this.nodes), this.rootKey);
+    return new EditorState(cloneMap(this.nodes), this.rootKey);
   }
 
   setText(nextText: string) {
     const textNode = this.getFirstTextNode();
     if (textNode && textNode.text !== nextText) {
-      textNode.text = nextText;
+      textNode.getWritable().text = nextText;
       this.markDirty(textNode.key);
     }
   }
@@ -107,7 +117,7 @@ export class EditorState {
   setTextNodeText(key: NodeKey, text: string): void {
     const node = this.nodes.get(key);
     if ($isTextNode(node) && node.text !== text) {
-      node.text = text;
+      node.getWritable().text = text;
       this.markDirty(key);
     }
   }
@@ -117,7 +127,9 @@ export class EditorState {
    * and serialization. Safe to call on an already-registered node.
    */
   registerNode(node: NodeBase) {
-    this.nodes.set(node.key, node);
+    if (!this.nodes.has(node.key)) {
+      this.nodes.set(node.key, node);
+    }
   }
 
   /**
@@ -130,8 +142,9 @@ export class EditorState {
   insertAfter(target: NodeBase, node: NodeBase) {
     this.registerNode(node);
     insertAfterUtil(this.nodes, target, node);
-    if (node.parent) {
-      this.markDirty(node.parent);
+    const latestNode = this.nodes.get(node.key) || node;
+    if (latestNode.parent) {
+      this.markDirty(latestNode.parent);
     }
   }
 
@@ -141,8 +154,9 @@ export class EditorState {
   insertBefore(target: NodeBase, node: NodeBase) {
     this.registerNode(node);
     insertBeforeUtil(this.nodes, target, node);
-    if (node.parent) {
-      this.markDirty(node.parent);
+    const latestNode = this.nodes.get(node.key) || node;
+    if (latestNode.parent) {
+      this.markDirty(latestNode.parent);
     }
   }
 
@@ -150,18 +164,30 @@ export class EditorState {
    * Structural helper: remove `node` from its parent.
    */
   remove(node: NodeBase) {
-    const parentKey = node.parent;
-    removeUtil(this.nodes, node);
+    const latestNode = this.nodes.get(node.key) || node;
+    const parentKey = latestNode.parent;
+    const prevKey = latestNode.__prev;
+    const nextKey = latestNode.__next;
+    
+    removeUtil(this.nodes, latestNode);
+    
     if (parentKey) {
       this.markDirty(parentKey);
     }
-    this.nodes.delete(node.key);
+    if (prevKey) {
+      this.markDirty(prevKey);
+    }
+    if (nextKey) {
+      this.markDirty(nextKey);
+    }
+    this.nodes.delete(latestNode.key);
   }
 
   /** Unlink `node` from its parent without removing it from the node map. */
   private detach(node: NodeBase) {
-    const parentKey = node.parent;
-    removeUtil(this.nodes, node);
+    const latestNode = this.nodes.get(node.key) || node;
+    const parentKey = latestNode.parent;
+    removeUtil(this.nodes, latestNode);
     if (parentKey) {
       this.markDirty(parentKey);
     }
@@ -173,12 +199,13 @@ export class EditorState {
    */
   replace(target: NodeBase, replacement: NodeBase) {
     this.registerNode(replacement);
-    const parentKey = target.parent;
-    replaceUtil(this.nodes, target, replacement);
+    const latestTarget = this.nodes.get(target.key) || target;
+    const parentKey = latestTarget.parent;
+    replaceUtil(this.nodes, latestTarget, replacement);
     if (parentKey) {
       this.markDirty(parentKey);
     }
-    this.nodes.delete(target.key);
+    this.nodes.delete(latestTarget.key);
   }
 
   /**
@@ -348,7 +375,7 @@ export class EditorState {
       this.markDirty(paragraph.key);
     }
 
-    textNode.text = textNode.text + text;
+    textNode.getWritable().text = textNode.text + text;
     this.markDirty(textNode.key);
   }
 
@@ -361,13 +388,13 @@ export class EditorState {
     if (isBackward) {
       const textNode = this.getLastTextNode();
       if (textNode && textNode.text.length > 0) {
-        textNode.text = textNode.text.slice(0, -1);
+        textNode.getWritable().text = textNode.text.slice(0, -1);
         this.markDirty(textNode.key);
       }
     } else {
       const textNode = this.getFirstTextNode();
       if (textNode && textNode.text.length > 0) {
-        textNode.text = textNode.text.slice(1);
+        textNode.getWritable().text = textNode.text.slice(1);
         this.markDirty(textNode.key);
       }
     }
@@ -415,7 +442,7 @@ export class EditorState {
     const clampedOffset = Math.min(Math.max(point.offset, 0), node.text.length);
     const before = node.text.slice(0, clampedOffset);
     const after = node.text.slice(clampedOffset);
-    node.text = before + text + after;
+    node.getWritable().text = before + text + after;
     this.markDirty(node.key);
 
     const newOffset = clampedOffset + text.length;
@@ -443,7 +470,7 @@ export class EditorState {
 
     if (isBackward) {
       if (clampedOffset > 0) {
-        node.text = node.text.slice(0, clampedOffset - 1) + node.text.slice(clampedOffset);
+        node.getWritable().text = node.text.slice(0, clampedOffset - 1) + node.text.slice(clampedOffset);
         this.markDirty(node.key);
         const nextPoint: TextPoint = { key: node.key, offset: clampedOffset - 1 };
         return createTextRange(nextPoint, nextPoint, false);
@@ -452,7 +479,7 @@ export class EditorState {
       if (previousText) {
         const nextOffset = Math.max(previousText.text.length - 1, 0);
         if (previousText.text.length > 0) {
-          previousText.text = previousText.text.slice(0, -1);
+          previousText.getWritable().text = previousText.text.slice(0, -1);
           this.markDirty(previousText.key);
         }
         const nextPoint: TextPoint = { key: previousText.key, offset: nextOffset };
@@ -462,7 +489,7 @@ export class EditorState {
     }
 
     if (clampedOffset < node.text.length) {
-      node.text = node.text.slice(0, clampedOffset) + node.text.slice(clampedOffset + 1);
+      node.getWritable().text = node.text.slice(0, clampedOffset) + node.text.slice(clampedOffset + 1);
       this.markDirty(node.key);
       const nextPoint: TextPoint = { key: node.key, offset: clampedOffset };
       return createTextRange(nextPoint, nextPoint, false);
@@ -470,7 +497,7 @@ export class EditorState {
     const nextText = this.nextTextNodeInBlock(node);
     if (nextText) {
       if (nextText.text.length > 0) {
-        nextText.text = nextText.text.slice(1);
+        nextText.getWritable().text = nextText.text.slice(1);
         this.markDirty(nextText.key);
       }
       const nextPoint: TextPoint = { key: node.key, offset: clampedOffset };
@@ -585,7 +612,7 @@ export class EditorState {
     const endOffset = Math.min(Math.max(end.offset, 0), endNode.text.length);
 
     if (startNode === endNode) {
-      startNode.text = startNode.text.slice(0, startOffset) + startNode.text.slice(endOffset);
+      startNode.getWritable().text = startNode.text.slice(0, startOffset) + startNode.text.slice(endOffset);
       this.markDirty(startNode.key);
       return { key: startNode.key, offset: startOffset };
     }
@@ -603,12 +630,12 @@ export class EditorState {
       }
     }
 
-    startNode.text = prefix;
+    startNode.getWritable().text = prefix;
     this.markDirty(startNode.key);
 
     let firstMovedAfterRange: TextNode | null = null;
     if (suffix.length > 0) {
-      endNode.text = suffix;
+      endNode.getWritable().text = suffix;
       this.markDirty(endNode.key);
       firstMovedAfterRange = endNode;
     } else {
@@ -699,7 +726,7 @@ export class EditorState {
     for (const node of covered) {
       const nextFormat = mutator(node.format);
       if (nextFormat !== node.format) {
-        node.format = nextFormat;
+        node.getWritable().format = nextFormat;
         this.markDirty(node.key);
       }
     }
@@ -721,23 +748,27 @@ export class EditorState {
     node: TextNode,
     offset: number,
   ): { left: TextNode | null; right: TextNode | null } {
+    const latestNode = this.nodes.get(node.key) as TextNode || node;
     if (offset <= 0) {
-      return { left: null, right: node };
+      return { left: null, right: latestNode };
     }
-    if (offset >= node.text.length) {
-      return { left: node, right: null };
+    if (offset >= latestNode.text.length) {
+      return { left: latestNode, right: null };
     }
 
-    const rightText = node.text.slice(offset);
-    const leftText = node.text.slice(0, offset);
+    const rightText = latestNode.text.slice(offset);
+    const leftText = latestNode.text.slice(0, offset);
 
-    const rightNode = $createTextNode(createNodeKey(), rightText, node.format);
-    this.insertAfter(node, rightNode);
+    const rightNode = $createTextNode(createNodeKey(), rightText, latestNode.format);
+    this.insertAfter(latestNode, rightNode);
 
-    node.text = leftText;
-    this.markDirty(node.key);
+    latestNode.getWritable().text = leftText;
+    this.markDirty(latestNode.key);
 
-    return { left: node, right: rightNode };
+    return { 
+      left: this.nodes.get(node.key) as TextNode || node, 
+      right: this.nodes.get(rightNode.key) as TextNode || rightNode 
+    };
   }
 
   /**
@@ -749,22 +780,25 @@ export class EditorState {
   }
 
   private nextTextNodeInDocument(node: TextNode): TextNode | null {
+    const latestNode = this.nodes.get(node.key) as TextNode || node;
     const all = this.getTextNodes();
-    const idx = all.indexOf(node);
+    const idx = all.indexOf(latestNode);
     return idx >= 0 && idx + 1 < all.length ? all[idx + 1] : null;
   }
 
   private previousTextNodeInDocument(node: TextNode): TextNode | null {
+    const latestNode = this.nodes.get(node.key) as TextNode || node;
     const all = this.getTextNodes();
-    const idx = all.indexOf(node);
+    const idx = all.indexOf(latestNode);
     return idx > 0 ? all[idx - 1] : null;
   }
 
   private previousTextNodeInBlock(node: TextNode): TextNode | null {
-    let previousKey = node.__prev;
+    const latestNode = this.nodes.get(node.key) as TextNode || node;
+    let previousKey = latestNode.__prev;
     while (previousKey) {
       const previous = this.nodes.get(previousKey);
-      if ($isTextNode(previous) && previous.parent === node.parent) {
+      if ($isTextNode(previous) && previous.parent === latestNode.parent) {
         return previous;
       }
       previousKey = previous?.__prev ?? null;
@@ -773,10 +807,11 @@ export class EditorState {
   }
 
   private nextTextNodeInBlock(node: TextNode): TextNode | null {
-    let nextKey = node.__next;
+    const latestNode = this.nodes.get(node.key) as TextNode || node;
+    let nextKey = latestNode.__next;
     while (nextKey) {
       const next = this.nodes.get(nextKey);
-      if ($isTextNode(next) && next.parent === node.parent) {
+      if ($isTextNode(next) && next.parent === latestNode.parent) {
         return next;
       }
       nextKey = next?.__next ?? null;
@@ -785,12 +820,14 @@ export class EditorState {
   }
 
   private collectTextNodesBetween(startNode: TextNode, endNode: TextNode): TextNode[] {
-    if (startNode === endNode) {
-      return [startNode];
+    const latestStart = this.nodes.get(startNode.key) as TextNode || startNode;
+    const latestEnd = this.nodes.get(endNode.key) as TextNode || endNode;
+    if (latestStart === latestEnd) {
+      return [latestStart];
     }
     const all = this.getTextNodes();
-    const startIdx = all.indexOf(startNode);
-    const endIdx = all.indexOf(endNode);
+    const startIdx = all.indexOf(latestStart);
+    const endIdx = all.indexOf(latestEnd);
     if (startIdx < 0 || endIdx < 0 || endIdx < startIdx) {
       return [];
     }
@@ -889,23 +926,26 @@ export class EditorState {
   }
 
   private getPreviousBlock(block: ElementNode): ElementNode | null {
-    if (!block.__prev) {
+    const latestBlock = this.nodes.get(block.key) as ElementNode || block;
+    if (!latestBlock.__prev) {
       return null;
     }
-    const previous = this.nodes.get(block.__prev);
+    const previous = this.nodes.get(latestBlock.__prev);
     return $isElementNode(previous) ? previous : null;
   }
 
   private getNextBlock(block: ElementNode): ElementNode | null {
-    if (!block.__next) {
+    const latestBlock = this.nodes.get(block.key) as ElementNode || block;
+    if (!latestBlock.__next) {
       return null;
     }
-    const next = this.nodes.get(block.__next);
+    const next = this.nodes.get(latestBlock.__next);
     return $isElementNode(next) ? next : null;
   }
 
   private getFirstTextNodeInBlock(block: ElementNode): TextNode | null {
-    let textKey = block.__first;
+    const latestBlock = this.nodes.get(block.key) as ElementNode || block;
+    let textKey = latestBlock.__first;
     while (textKey) {
       const node = this.nodes.get(textKey);
       if ($isTextNode(node)) {
@@ -917,7 +957,8 @@ export class EditorState {
   }
 
   private getLastTextNodeInBlock(block: ElementNode): TextNode | null {
-    let textKey = block.__last;
+    const latestBlock = this.nodes.get(block.key) as ElementNode || block;
+    let textKey = latestBlock.__last;
     while (textKey) {
       const node = this.nodes.get(textKey);
       if ($isTextNode(node)) {
@@ -933,12 +974,14 @@ export class EditorState {
     let cursor: NodeBase | undefined = startNode;
 
     while (cursor) {
-      const nextKey: NodeKey | null = cursor.__next;
-      this.detach(cursor);
-      destination.append(this.nodes, cursor);
-      this.markDirty(destination.key);
-      if ($isTextNode(cursor)) {
-        movedTextNodes.push(cursor);
+      const latestCursor: NodeBase = this.nodes.get(cursor.key) || cursor;
+      const nextKey: NodeKey | null = latestCursor.__next;
+      this.detach(latestCursor);
+      const latestDestination: ElementNode = (this.nodes.get(destination.key) as ElementNode) || destination;
+      latestDestination.append(this.nodes, latestCursor);
+      this.markDirty(latestDestination.key);
+      if ($isTextNode(latestCursor)) {
+        movedTextNodes.push(latestCursor as TextNode);
       }
       cursor = nextKey ? this.nodes.get(nextKey) : undefined;
     }
@@ -947,7 +990,8 @@ export class EditorState {
   }
 
   private moveAllChildren(source: ElementNode, destination: ElementNode): TextNode[] {
-    const firstChild = source.__first ? this.nodes.get(source.__first) : undefined;
+    const latestSource = this.nodes.get(source.key) as ElementNode || source;
+    const firstChild = latestSource.__first ? this.nodes.get(latestSource.__first) : undefined;
     if (!firstChild) {
       return [];
     }
@@ -974,16 +1018,17 @@ export class EditorState {
 
   private mergeForwardSameFormatRuns(anchor: TextNode): void {
     while (this.nodes.has(anchor.key)) {
-      const next = anchor.next ? this.nodes.get(anchor.next) : null;
+      const latestAnchor = this.nodes.get(anchor.key) as TextNode;
+      const next = latestAnchor.next ? this.nodes.get(latestAnchor.next) : null;
       if (
         !$isTextNode(next) ||
-        next.parent !== anchor.parent ||
-        next.format !== anchor.format
+        next.parent !== latestAnchor.parent ||
+        next.format !== latestAnchor.format
       ) {
         return;
       }
-      anchor.text = anchor.text + next.text;
-      this.markDirty(anchor.key);
+      latestAnchor.getWritable().text = latestAnchor.text + next.text;
+      this.markDirty(latestAnchor.key);
       this.remove(next);
     }
   }
@@ -1019,21 +1064,23 @@ export class EditorState {
     }
 
     for (let i = 0; i < candidates.length - 1; i += 1) {
-      const left = candidates[i];
-      const right = candidates[i + 1];
-      // Skip entries that may have been removed by an earlier merge in this pass.
-      if (!this.nodes.has(left.key) || !this.nodes.has(right.key)) {
+      const leftKey = candidates[i].key;
+      const rightKey = candidates[i + 1].key;
+      if (!this.nodes.has(leftKey) || !this.nodes.has(rightKey)) {
         continue;
       }
+      const latestLeft = this.nodes.get(leftKey) as TextNode;
+      const latestRight = this.nodes.get(rightKey) as TextNode;
+      
       if (
-        left.parent === right.parent &&
-        left.format === right.format &&
-        left.next === right.key
+        latestLeft.parent === latestRight.parent &&
+        latestLeft.format === latestRight.format &&
+        latestLeft.next === latestRight.key
       ) {
-        left.text = left.text + right.text;
-        this.markDirty(left.key);
-        this.remove(right);
-        candidates[i + 1] = left;
+        latestLeft.getWritable().text = latestLeft.text + latestRight.text;
+        this.markDirty(latestLeft.key);
+        this.remove(latestRight);
+        candidates[i + 1] = latestLeft;
       }
     }
   }
@@ -1085,6 +1132,8 @@ function materializeNode(record: SerializedNode): NodeBase {
       return ParagraphNode.importJSON(record);
     case 'text':
       return TextNode.importJSON(record);
+    case 'linebreak':
+      return LineBreakNode.importJSON(record);
     default: {
       const exhaustive: never = record;
       throw new InvalidSnapshotError(

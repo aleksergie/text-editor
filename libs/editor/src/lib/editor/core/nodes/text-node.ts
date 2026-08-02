@@ -73,6 +73,14 @@ export class TextNode extends NodeBase {
     return 'text';
   }
 
+  static override clone(node: unknown): TextNode {
+    return new TextNode((node as TextNode).__key, (node as TextNode).text, (node as TextNode).format);
+  }
+
+  override afterCloneFrom(prev: this): void {
+    super.afterCloneFrom(prev);
+  }
+
   static override readonly version: number = 2;
 
   getFormat(): TextFormatBits {

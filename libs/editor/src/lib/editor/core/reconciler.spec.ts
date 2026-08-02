@@ -6,20 +6,45 @@ import {
 import { NodeMap } from './nodes/node';
 import { Reconciler } from './reconciler';
 import { EditorState } from './state';
+import { createEditor } from './editor';
+import { $setActiveContext } from './active-context';
 
 function buildState(paragraphs: Array<Array<{ key: string; text: string }>>): EditorState {
   const nodes: NodeMap = new Map();
   const root = $createRootNode('root');
   nodes.set(root.key, root);
 
+  let prevParagraphKey: string | null = null;
   paragraphs.forEach((textNodes, pIdx) => {
     const paragraph = $createParagraphNode(`p${pIdx + 1}`);
     nodes.set(paragraph.key, paragraph);
-    root.append(nodes, paragraph);
+    
+    paragraph.__parent = root.key;
+    paragraph.__prev = prevParagraphKey;
+    if (prevParagraphKey) {
+      (nodes.get(prevParagraphKey) as any).__next = paragraph.key;
+    } else {
+      root.__first = paragraph.key;
+    }
+    root.__last = paragraph.key;
+    root.__size += 1;
+    prevParagraphKey = paragraph.key;
+
+    let prevTextKey: string | null = null;
     for (const { key, text } of textNodes) {
       const textNode = $createTextNode(key, text);
       nodes.set(textNode.key, textNode);
-      paragraph.append(nodes, textNode);
+      
+      textNode.__parent = paragraph.key;
+      textNode.__prev = prevTextKey;
+      if (prevTextKey) {
+        (nodes.get(prevTextKey) as any).__next = textNode.key;
+      } else {
+        paragraph.__first = textNode.key;
+      }
+      paragraph.__last = textNode.key;
+      paragraph.__size += 1;
+      prevTextKey = textNode.key;
     }
   });
 
@@ -65,8 +90,11 @@ describe('Reconciler', () => {
       const paragraphBefore = rootEl.children[0];
       const spanBefore = paragraphBefore.children[0];
 
+      const editor = createEditor();
       const next = buildState([[{ key: 't1', text: 'new' }]]);
+      $setActiveContext(editor, next);
       next.markDirty('t1');
+      $setActiveContext(null as any, null as any);
 
       reconciler.update(rootEl, prev, next);
 
@@ -96,12 +124,15 @@ describe('Reconciler', () => {
       const paragraphBefore = rootEl.children[0];
       const spanBefore = paragraphBefore.children[0];
 
+      const editor = createEditor();
       const next = buildState([
         [{ key: 't1', text: 'one' }],
         [{ key: 't2', text: 'two' }],
       ]);
       // Mirror what state.insertAfter does: mark the structural parent dirty.
+      $setActiveContext(editor, next);
       next.markDirty(next.rootKey);
+      $setActiveContext(null as any, null as any);
 
       reconciler.update(rootEl, prev, next);
 
@@ -121,8 +152,11 @@ describe('Reconciler', () => {
       expect(reconciler.getDom('p2')).not.toBeNull();
       expect(reconciler.getDom('t2')).not.toBeNull();
 
+      const editor = createEditor();
       const next = buildState([[{ key: 't1', text: 'keep' }]]);
+      $setActiveContext(editor, next);
       next.markDirty(next.rootKey);
+      $setActiveContext(null as any, null as any);
 
       reconciler.update(rootEl, prev, next);
 
@@ -137,13 +171,16 @@ describe('Reconciler', () => {
       const prev = buildState([[{ key: 't1', text: 'text' }]]);
       reconciler.mount(rootEl, prev);
 
+      const editor = createEditor();
       const next = buildState([[{ key: 't1', text: 'text' }]]);
       // Synthetic scenario: a key whose model type changed between states.
       // Not produced by any state.ts helper; documented as supported only
       // insofar as it must not crash.
       const paragraph = $createParagraphNode('t1');
       next.nodes.set('t1', paragraph);
+      $setActiveContext(editor, next);
       next.markDirty('t1');
+      $setActiveContext(null as any, null as any);
 
       expect(() => reconciler.update(rootEl, prev, next)).not.toThrow();
     });
@@ -160,13 +197,16 @@ describe('Reconciler', () => {
       reconciler.mount(rootEl, prev);
       expect(reconciler.getDom('t2')).not.toBeNull();
 
+      const editor = createEditor();
       const next = buildState([
         [
           { key: 't1', text: 'first-edited' },
           { key: 't2', text: 'second' },
         ],
       ]);
+      $setActiveContext(editor, next);
       next.markDirty('t1');
+      $setActiveContext(null as any, null as any);
 
       const t2Spy = jest.spyOn(next.nodes.get('t2')!, 'updateDOM');
       const t1Spy = jest.spyOn(next.nodes.get('t1')!, 'updateDOM');

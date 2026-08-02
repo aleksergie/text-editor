@@ -1,5 +1,5 @@
 import { NodeKey } from './nodes/node';
-import { $isTextNode } from './nodes/node-utils';
+import { $isTextNode, $isElementNode } from './nodes/node-utils';
 import { EditorState } from './state';
 import { TextFormat, TextFormatBits } from './text-format';
 
@@ -154,7 +154,12 @@ export function resolveDomSelection(
   const state = host.getEditorState();
   const anchorNode = state.nodes.get(anchorKey);
   const focusNode = state.nodes.get(focusKey);
-  if (!$isTextNode(anchorNode) || !$isTextNode(focusNode)) {
+  if (!anchorNode || !focusNode) {
+    return null;
+  }
+  
+  const isValidTarget = (n: any) => $isTextNode(n) || ($isElementNode(n) && n.__size === 0);
+  if (!isValidTarget(anchorNode) || !isValidTarget(focusNode)) {
     return null;
   }
 
@@ -164,18 +169,19 @@ export function resolveDomSelection(
     return null;
   }
 
-  const anchorOffset = normalizeOffsetWithinTextNode(
+  const anchorOffset = $isTextNode(anchorNode) ? normalizeOffsetWithinTextNode(
     anchorHost,
     sel.anchorNode,
     sel.anchorOffset,
     anchorNode.text.length,
-  );
-  const focusOffset = normalizeOffsetWithinTextNode(
+  ) : 0;
+  
+  const focusOffset = $isTextNode(focusNode) ? normalizeOffsetWithinTextNode(
     focusHost,
     sel.focusNode,
     sel.focusOffset,
     focusNode.text.length,
-  );
+  ) : 0;
 
   const isBackward = isSelectionBackward(
     sel.anchorNode,

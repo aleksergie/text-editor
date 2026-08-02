@@ -3,6 +3,16 @@ import { ElementNode } from './nodes/element-node';
 import { NodeBase, NodeKey } from './nodes/node';
 import { $isElementNode, $isTextNode } from './nodes/node-utils';
 
+const MANAGED_LINE_BREAK = Symbol('ManagedLineBreak');
+
+export function markAsManagedLineBreak(node: Node) {
+  (node as any)[MANAGED_LINE_BREAK] = true;
+}
+
+export function isManagedLineBreak(node: Node | null): boolean {
+  return node !== null && (node as any)[MANAGED_LINE_BREAK] === true;
+}
+
 export class Reconciler {
   private keyToDom = new Map<NodeKey, HTMLElement>();
   /**
@@ -144,12 +154,24 @@ export class Reconciler {
     // the keyToDom entries for the entire detached subtree.
     while (domCursor) {
       const sibling: Node | null = domCursor.nextSibling;
-      const key = this.domToKey.get(domCursor);
-      parentDom.removeChild(domCursor);
-      if (key !== undefined) {
-        this.deleteKeyToDomSubtree(key, prev);
+      
+      // If we are reconciling to an empty element and this is the managed BR, keep it
+      if (nextElement.__size === 0 && isManagedLineBreak(domCursor)) {
+        // Leave it alone
+      } else {
+        const key = this.domToKey.get(domCursor);
+        parentDom.removeChild(domCursor);
+        if (key !== undefined) {
+          this.deleteKeyToDomSubtree(key, prev);
+        }
       }
       domCursor = sibling;
+    }
+
+    if (nextElement.__size === 0 && parentDom.childNodes.length === 0) {
+      const br = document.createElement('br');
+      markAsManagedLineBreak(br);
+      parentDom.appendChild(br);
     }
   }
 
@@ -179,6 +201,13 @@ export class Reconciler {
         }
         childKey = child.__next;
       }
+      
+      if (node.__size === 0) {
+        const br = document.createElement('br');
+        markAsManagedLineBreak(br);
+        dom.appendChild(br);
+      }
+      
       return dom;
     }
 

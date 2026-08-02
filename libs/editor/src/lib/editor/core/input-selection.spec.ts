@@ -3,6 +3,8 @@ import { EditorState } from './state';
 import { $isElementNode, $isTextNode } from './nodes/node-utils';
 import { TextNode } from './nodes/text-node';
 import { TextFormat } from './text-format';
+import { createEditor, Editor } from './editor';
+import { $setActiveContext } from './active-context';
 
 function paragraphTexts(state: EditorState): string[][] {
   const root = state.nodes.get(state.rootKey);
@@ -61,15 +63,25 @@ function paragraphRuns(state: EditorState): Array<Array<{ text: string; format: 
 function splitTextIntoRuns(state: EditorState, first: TextNode): TextNode[] {
   const { right: tail } = state.splitTextNodeAt(first, 2);
   if (!tail) {
-    return [first];
+    return [state.nodes.get(first.key) as TextNode];
   }
-  tail.format = TextFormat.BOLD;
-  const { right: finalRun } = state.splitTextNodeAt(tail, 2);
+  const latestTail = state.nodes.get(tail.key) as TextNode;
+  latestTail.getWritable().setFormat(TextFormat.BOLD);
+  
+  const { right: finalRun } = state.splitTextNodeAt(latestTail, 2);
   if (finalRun) {
-    finalRun.format = TextFormat.ITALIC;
-    return [first, tail, finalRun];
+    const latestFinalRun = state.nodes.get(finalRun.key) as TextNode;
+    latestFinalRun.getWritable().setFormat(TextFormat.ITALIC);
+    return [
+      state.nodes.get(first.key) as TextNode,
+      state.nodes.get(tail.key) as TextNode,
+      latestFinalRun
+    ];
   }
-  return [first, tail];
+  return [
+    state.nodes.get(first.key) as TextNode,
+    state.nodes.get(tail.key) as TextNode
+  ];
 }
 
 function splitBaselineTextIntoRuns(state: EditorState): TextNode[] {
@@ -78,11 +90,18 @@ function splitBaselineTextIntoRuns(state: EditorState): TextNode[] {
 
 describe('selection-aware EditorState mutations', () => {
   let state: EditorState;
+  let editor: Editor;
 
   beforeEach(() => {
+    editor = createEditor();
     state = EditorState.createEmpty();
+    $setActiveContext(editor, state);
     state.setText('abcdef');
     state.clearDirtyNodeKeys();
+  });
+
+  afterEach(() => {
+    $setActiveContext(null as any, null as any);
   });
 
   it('insertTextAtRange inserts at a collapsed middle caret', () => {
@@ -318,7 +337,8 @@ describe('selection-aware EditorState mutations', () => {
     const secondText = state.nodes.get(secondParagraphSelection!.anchor.key) as TextNode;
     const { right } = state.splitTextNodeAt(secondText, 1);
     if (right) {
-      right.format = TextFormat.BOLD;
+      const latestRight = state.nodes.get(right.key) as TextNode;
+      latestRight.getWritable().setFormat(TextFormat.BOLD);
     }
 
     const next = state.deleteCharacterAtRange(
@@ -349,7 +369,8 @@ describe('selection-aware EditorState mutations', () => {
     const secondText = state.nodes.get(secondParagraphSelection!.anchor.key) as TextNode;
     const { right } = state.splitTextNodeAt(secondText, 1);
     if (right) {
-      right.format = TextFormat.BOLD;
+      const latestRight = state.nodes.get(right.key) as TextNode;
+      latestRight.getWritable().setFormat(TextFormat.BOLD);
     }
 
     const next = state.deleteCharacterAtRange(

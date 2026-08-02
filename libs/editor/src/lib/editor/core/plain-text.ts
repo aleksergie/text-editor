@@ -44,6 +44,8 @@ export function toPlainText(state: EditorState): string {
   return lines.join('\n');
 }
 
+import { $setActiveContext, $clearActiveContext } from './active-context';
+
 /**
  * Build an EditorState from plain text, producing one paragraph per line.
  * An empty input yields the v1 baseline shape (single empty paragraph).
@@ -53,15 +55,23 @@ export function fromPlainText(text: string): EditorState {
   const nodes: NodeMap = new Map();
   const root = $createRootNode('root');
   nodes.set(root.key, root);
+  
+  const state = new EditorState(nodes, root.key);
+  const dummyEditor = {} as any;
+  $setActiveContext(dummyEditor, state);
 
-  for (const line of lines) {
-    const paragraph = $createParagraphNode(createNodeKey());
-    const textNode = $createTextNode(createNodeKey(), line);
-    nodes.set(paragraph.key, paragraph);
-    nodes.set(textNode.key, textNode);
-    paragraph.append(nodes, textNode);
-    root.append(nodes, paragraph);
+  try {
+    for (const line of lines) {
+      const paragraph = $createParagraphNode(createNodeKey());
+      const textNode = $createTextNode(createNodeKey(), line);
+      nodes.set(paragraph.key, paragraph);
+      nodes.set(textNode.key, textNode);
+      paragraph.append(nodes, textNode);
+      root.append(nodes, paragraph);
+    }
+  } finally {
+    $clearActiveContext();
   }
 
-  return new EditorState(nodes, root.key);
+  return state;
 }

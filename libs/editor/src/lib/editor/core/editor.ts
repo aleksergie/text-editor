@@ -16,9 +16,15 @@ import { DomObserver, DomObserverCallback } from './dom-observer';
 import { writeDomSelection } from './dom-selection';
 import { bindEditorEvents, registerInputCommandHandlers } from './editor-events';
 import { NodeKey } from './nodes/node';
-import { $isTextNode } from './nodes/node-utils';
+import { $isTextNode, $isElementNode } from './nodes/node-utils';
 import { EditorPluginContext } from './plugin';
 import { Reconciler } from './reconciler';
+import {
+  $getActiveEditor,
+  $getActiveEditorState,
+  $setActiveContext,
+  $clearActiveContext,
+} from './active-context';
 import {
   SelectionListener,
   SelectionSource,
@@ -381,9 +387,14 @@ export class Editor {
 
   update(fn: (state: EditorState) => void, options: UpdateOptions = {}) {
     const wasUpdating = this.isUpdating;
+    const prevActiveEditor = $getActiveEditor();
+    const prevActiveState = $getActiveEditorState();
+    
     this.isUpdating = true;
     try {
       const next = this.state.clone();
+      $setActiveContext(this, next);
+      
       fn(next);
       const prev = this.state;
       this.state = next;
@@ -397,8 +408,14 @@ export class Editor {
 
       this.notifyUpdateListeners(prev, next);
       next.clearDirtyNodeKeys();
+      next._cloneNotNeeded.clear();
     } finally {
       this.isUpdating = wasUpdating;
+      if (prevActiveEditor && prevActiveState) {
+        $setActiveContext(prevActiveEditor, prevActiveState);
+      } else {
+        $clearActiveContext();
+      }
     }
 
     if (!wasUpdating) {
@@ -424,15 +441,19 @@ export class Editor {
     }
     const anchor = state.nodes.get(range.anchor.key);
     const focus = state.nodes.get(range.focus.key);
-    if (!$isTextNode(anchor) || !$isTextNode(focus)) {
+    
+    const isPointValid = (node: import('./nodes/node').NodeBase | undefined, offset: number) => {
+      if (!node) return false;
+      if ($isTextNode(node)) {
+        return offset >= 0 && offset <= node.text.length;
+      }
+      if ($isElementNode(node)) {
+        return offset === 0 && node.__size === 0;
+      }
       return false;
-    }
-    return (
-      range.anchor.offset >= 0 &&
-      range.anchor.offset <= anchor.text.length &&
-      range.focus.offset >= 0 &&
-      range.focus.offset <= focus.text.length
-    );
+    };
+
+    return isPointValid(anchor, range.anchor.offset) && isPointValid(focus, range.focus.offset);
   }
 
   /**

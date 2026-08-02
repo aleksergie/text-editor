@@ -268,36 +268,41 @@ describe('FORMAT_TEXT command', () => {
 
 describe('EditorState.splitTextNodeAt', () => {
   it('splits in the middle and preserves format on both halves', () => {
-    const state = EditorState.createEmpty();
-    const t = state.getTextNodesInDocumentOrder()[0];
-    t.text = 'helloworld';
-    t.setFormat(TextFormat.ITALIC);
-
-    const { left, right } = state.splitTextNodeAt(t, 5);
-
-    expect(left).toBe(t);
-    expect(left?.text).toBe('hello');
-    expect(right?.text).toBe('world');
-    expect(right?.format).toBe(TextFormat.ITALIC);
-    // Insertion order preserved: left.next === right.key
-    expect(left?.next).toBe(right?.key);
+    const editor = new Editor();
+    editor.update((state) => {
+      const t = state.getTextNodesInDocumentOrder()[0];
+      t.text = 'helloworld';
+      t.getWritable().setFormat(TextFormat.ITALIC);
+      const res = state.splitTextNodeAt(t, 5);
+      const left = res.left;
+      const right = res.right;
+      expect(left?.text).toBe('hello');
+      expect(right?.text).toBe('world');
+      expect(right?.format).toBe(TextFormat.ITALIC);
+      // Insertion order preserved: left.next === right.key
+      expect(left?.next).toBe(right?.key);
+    });
   });
 
   it('returns { left: null, right: node } for offset 0', () => {
-    const state = EditorState.createEmpty();
-    const t = state.getTextNodesInDocumentOrder()[0];
-    t.text = 'xy';
-    const result = state.splitTextNodeAt(t, 0);
-    expect(result.left).toBeNull();
-    expect(result.right).toBe(t);
+    const editor = new Editor();
+    editor.update((state) => {
+      const t = state.getTextNodesInDocumentOrder()[0];
+      t.getWritable().text = 'xy';
+      const result = state.splitTextNodeAt(t, 0);
+      expect(result.left).toBeNull();
+      expect(result.right?.text).toBe('xy');
+    });
   });
 
   it('returns { left: node, right: null } for offset === text.length', () => {
-    const state = EditorState.createEmpty();
-    const t = state.getTextNodesInDocumentOrder()[0];
-    t.text = 'xy';
-    const result = state.splitTextNodeAt(t, 2);
-    expect(result.left).toBe(t);
-    expect(result.right).toBeNull();
+    const editor = new Editor();
+    editor.update((state) => {
+      const t = state.getTextNodesInDocumentOrder()[0];
+      t.getWritable().text = 'xy';
+      const result = state.splitTextNodeAt(t, 2);
+      expect(result.left?.text).toBe('xy');
+      expect(result.right).toBeNull();
+    });
   });
 });
