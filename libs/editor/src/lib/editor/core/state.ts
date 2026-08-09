@@ -106,8 +106,8 @@ export class EditorState {
 
   setText(nextText: string) {
     const textNode = this.getFirstTextNode();
-    if (textNode && textNode.text !== nextText) {
-      textNode.getWritable().text = nextText;
+    if (textNode && textNode.getText() !== nextText) {
+      textNode.setText(nextText);
       this.markDirty(textNode.key);
     }
   }
@@ -119,8 +119,8 @@ export class EditorState {
    */
   setTextNodeText(key: NodeKey, text: string): void {
     const node = this.nodes.get(key);
-    if ($isTextNode(node) && node.text !== text) {
-      node.getWritable().text = text;
+    if ($isTextNode(node) && node.getText() !== text) {
+      node.setText(text);
       this.markDirty(key);
     }
   }
@@ -297,7 +297,7 @@ export class EditorState {
 
   getText(): string {
     const textNodes = this.getTextNodes();
-    return textNodes.map((node) => node.text).join('');
+    return textNodes.map((node) => node.getText()).join('');
   }
 
   private getTextNodes(): TextNode[] {
@@ -378,7 +378,7 @@ export class EditorState {
       this.markDirty(paragraph.key);
     }
 
-    textNode.getWritable().text = textNode.text + text;
+    textNode.setText(textNode.getText() + text);
     this.markDirty(textNode.key);
   }
 
@@ -390,14 +390,14 @@ export class EditorState {
   deleteCharacter(isBackward: boolean) {
     if (isBackward) {
       const textNode = this.getLastTextNode();
-      if (textNode && textNode.text.length > 0) {
-        textNode.getWritable().text = textNode.text.slice(0, -1);
+      if (textNode && textNode.getText().length > 0) {
+        textNode.setText(textNode.getText().slice(0, -1));
         this.markDirty(textNode.key);
       }
     } else {
       const textNode = this.getFirstTextNode();
-      if (textNode && textNode.text.length > 0) {
-        textNode.getWritable().text = textNode.text.slice(1);
+      if (textNode && textNode.getText().length > 0) {
+        textNode.setText(textNode.getText().slice(1));
         this.markDirty(textNode.key);
       }
     }
@@ -414,8 +414,8 @@ export class EditorState {
     }
     this.insertParagraphAtRange(
       createTextRange(
-        { key: lastText.key, offset: lastText.text.length },
-        { key: lastText.key, offset: lastText.text.length },
+        { key: lastText.key, offset: lastText.getText().length },
+        { key: lastText.key, offset: lastText.getText().length },
         false,
       ),
     );
@@ -442,10 +442,10 @@ export class EditorState {
       return workingRange;
     }
 
-    const clampedOffset = Math.min(Math.max(point.offset, 0), node.text.length);
-    const before = node.text.slice(0, clampedOffset);
-    const after = node.text.slice(clampedOffset);
-    node.getWritable().text = before + text + after;
+    const clampedOffset = Math.min(Math.max(point.offset, 0), node.getText().length);
+    const before = node.getText().slice(0, clampedOffset);
+    const after = node.getText().slice(clampedOffset);
+    node.setText(before + text + after);
     this.markDirty(node.key);
 
     const newOffset = clampedOffset + text.length;
@@ -469,20 +469,20 @@ export class EditorState {
       return null;
     }
 
-    const clampedOffset = Math.min(Math.max(point.offset, 0), node.text.length);
+    const clampedOffset = Math.min(Math.max(point.offset, 0), node.getText().length);
 
     if (isBackward) {
       if (clampedOffset > 0) {
-        node.getWritable().text = node.text.slice(0, clampedOffset - 1) + node.text.slice(clampedOffset);
+        node.setText(node.getText().slice(0, clampedOffset - 1) + node.getText().slice(clampedOffset));
         this.markDirty(node.key);
         const nextPoint: TextPoint = { key: node.key, offset: clampedOffset - 1 };
         return createTextRange(nextPoint, nextPoint, false);
       }
       const previousText = this.previousTextNodeInBlock(node);
       if (previousText) {
-        const nextOffset = Math.max(previousText.text.length - 1, 0);
-        if (previousText.text.length > 0) {
-          previousText.getWritable().text = previousText.text.slice(0, -1);
+        const nextOffset = Math.max(previousText.getText().length - 1, 0);
+        if (previousText.getText().length > 0) {
+          previousText.setText(previousText.getText().slice(0, -1));
           this.markDirty(previousText.key);
         }
         const nextPoint: TextPoint = { key: previousText.key, offset: nextOffset };
@@ -491,16 +491,16 @@ export class EditorState {
       return this.mergeWithPreviousParagraph(node);
     }
 
-    if (clampedOffset < node.text.length) {
-      node.getWritable().text = node.text.slice(0, clampedOffset) + node.text.slice(clampedOffset + 1);
+    if (clampedOffset < node.getText().length) {
+      node.setText(node.getText().slice(0, clampedOffset) + node.getText().slice(clampedOffset + 1));
       this.markDirty(node.key);
       const nextPoint: TextPoint = { key: node.key, offset: clampedOffset };
       return createTextRange(nextPoint, nextPoint, false);
     }
     const nextText = this.nextTextNodeInBlock(node);
     if (nextText) {
-      if (nextText.text.length > 0) {
-        nextText.getWritable().text = nextText.text.slice(1);
+      if (nextText.getText().length > 0) {
+        nextText.setText(nextText.getText().slice(1));
         this.markDirty(nextText.key);
       }
       const nextPoint: TextPoint = { key: node.key, offset: clampedOffset };
@@ -531,7 +531,7 @@ export class EditorState {
       return null;
     }
 
-    const clampedOffset = Math.min(Math.max(point.offset, 0), textNode.text.length);
+    const clampedOffset = Math.min(Math.max(point.offset, 0), textNode.getText().length);
     const previousText = this.previousTextNodeInBlock(textNode);
     const nextText = this.nextTextNodeInBlock(textNode);
 
@@ -550,11 +550,11 @@ export class EditorState {
       );
     }
 
-    if (clampedOffset >= textNode.text.length && nextText) {
+    if (clampedOffset >= textNode.getText().length && nextText) {
       return this.splitParagraphBeforeTextNode(paragraph, nextText);
     }
 
-    if (clampedOffset >= textNode.text.length) {
+    if (clampedOffset >= textNode.getText().length) {
       const { paragraph: newParagraph, text: newText } = this.createEmptyParagraph();
       this.insertAfter(paragraph, newParagraph);
       this.markDirty(this.rootKey);
@@ -611,7 +611,7 @@ export class EditorState {
       return null;
     }
 
-    const clampedOffset = Math.min(Math.max(point.offset, 0), textNode.text.length);
+    const clampedOffset = Math.min(Math.max(point.offset, 0), textNode.getText().length);
     const lineBreak = $createLineBreakNode(createNodeKey());
     this.registerNode(lineBreak);
 
@@ -620,7 +620,7 @@ export class EditorState {
       return createTextRange({ key: textNode.key, offset: 0 }, { key: textNode.key, offset: 0 }, false);
     }
 
-    if (clampedOffset === textNode.text.length) {
+    if (clampedOffset === textNode.getText().length) {
       this.insertAfter(textNode, lineBreak);
       const emptyText = $createTextNode(createNodeKey(), '', textNode.format);
       this.registerNode(emptyText);
@@ -653,7 +653,7 @@ export class EditorState {
       return null;
     }
 
-    const clampedOffset = Math.min(Math.max(point.offset, 0), textNode.text.length);
+    const clampedOffset = Math.min(Math.max(point.offset, 0), textNode.getText().length);
     const tabNode = $createTabNode(createNodeKey());
     this.registerNode(tabNode);
 
@@ -662,7 +662,7 @@ export class EditorState {
       return createTextRange({ key: textNode.key, offset: 0 }, { key: textNode.key, offset: 0 }, false);
     }
 
-    if (clampedOffset === textNode.text.length) {
+    if (clampedOffset === textNode.getText().length) {
       this.insertAfter(textNode, tabNode);
       const emptyText = $createTextNode(createNodeKey(), '', textNode.format);
       this.registerNode(emptyText);
@@ -695,17 +695,17 @@ export class EditorState {
       return start;
     }
 
-    const startOffset = Math.min(Math.max(start.offset, 0), startNode.text.length);
-    const endOffset = Math.min(Math.max(end.offset, 0), endNode.text.length);
+    const startOffset = Math.min(Math.max(start.offset, 0), startNode.getText().length);
+    const endOffset = Math.min(Math.max(end.offset, 0), endNode.getText().length);
 
     if (startNode === endNode) {
-      startNode.getWritable().text = startNode.text.slice(0, startOffset) + startNode.text.slice(endOffset);
+      startNode.setText(startNode.getText().slice(0, startOffset) + startNode.getText().slice(endOffset));
       this.markDirty(startNode.key);
       return { key: startNode.key, offset: startOffset };
     }
 
-    const prefix = startNode.text.slice(0, startOffset);
-    const suffix = endNode.text.slice(endOffset);
+    const prefix = startNode.getText().slice(0, startOffset);
+    const suffix = endNode.getText().slice(endOffset);
     const covered = this.collectTextNodesBetween(startNode, endNode);
     const startParentKey = startNode.parent;
     const endParentKey = endNode.parent;
@@ -717,12 +717,12 @@ export class EditorState {
       }
     }
 
-    startNode.getWritable().text = prefix;
+    startNode.setText(prefix);
     this.markDirty(startNode.key);
 
     let firstMovedAfterRange: TextNode | null = null;
     if (suffix.length > 0) {
-      endNode.getWritable().text = suffix;
+      endNode.setText(suffix);
       this.markDirty(endNode.key);
       firstMovedAfterRange = endNode;
     } else {
@@ -828,7 +828,7 @@ export class EditorState {
    * Both halves inherit the original format bitfield.
    *
    * No mutation happens at the endpoints: `offset === 0` returns
-   * `{ left: null, right: node }` and `offset === node.text.length` returns
+   * `{ left: null, right: node }` and `offset === node.getText().length` returns
    * `{ left: node, right: null }`.
    */
   splitTextNodeAt(
@@ -839,17 +839,17 @@ export class EditorState {
     if (offset <= 0) {
       return { left: null, right: latestNode };
     }
-    if (offset >= latestNode.text.length) {
+    if (offset >= latestNode.getText().length) {
       return { left: latestNode, right: null };
     }
 
-    const rightText = latestNode.text.slice(offset);
-    const leftText = latestNode.text.slice(0, offset);
+    const rightText = latestNode.getText().slice(offset);
+    const leftText = latestNode.getText().slice(0, offset);
 
     const rightNode = $createTextNode(createNodeKey(), rightText, latestNode.format);
     this.insertAfter(latestNode, rightNode);
 
-    latestNode.getWritable().text = leftText;
+    latestNode.setText(leftText);
     this.markDirty(latestNode.key);
 
     return { 
@@ -971,7 +971,7 @@ export class EditorState {
       return null;
     }
 
-    const mergeOffset = previousLastText.text.length;
+    const mergeOffset = previousLastText.getText().length;
     const movedTextNodes = this.moveAllChildren(paragraph, previousParagraph);
     this.remove(paragraph);
     this.markDirty(this.rootKey);
@@ -993,13 +993,13 @@ export class EditorState {
     const nextParagraph = this.getNextBlock(paragraph);
     if (!nextParagraph) {
       return createTextRange(
-        { key: textNode.key, offset: textNode.text.length },
-        { key: textNode.key, offset: textNode.text.length },
+        { key: textNode.key, offset: textNode.getText().length },
+        { key: textNode.key, offset: textNode.getText().length },
         false,
       );
     }
 
-    const mergeOffset = textNode.text.length;
+    const mergeOffset = textNode.getText().length;
     const movedTextNodes = this.moveAllChildren(nextParagraph, paragraph);
     this.remove(nextParagraph);
     this.markDirty(this.rootKey);
@@ -1114,7 +1114,7 @@ export class EditorState {
       ) {
         return;
       }
-      latestAnchor.getWritable().text = latestAnchor.text + next.text;
+      latestAnchor.setText(latestAnchor.getText() + next.getText());
       this.markDirty(latestAnchor.key);
       this.remove(next);
     }
@@ -1164,7 +1164,7 @@ export class EditorState {
         latestLeft.format === latestRight.format &&
         latestLeft.next === latestRight.key
       ) {
-        latestLeft.getWritable().text = latestLeft.text + latestRight.text;
+        latestLeft.setText(latestLeft.getText() + latestRight.getText());
         this.markDirty(latestLeft.key);
         this.remove(latestRight);
         candidates[i + 1] = latestLeft;

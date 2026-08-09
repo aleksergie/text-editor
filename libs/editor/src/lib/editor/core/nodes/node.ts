@@ -77,6 +77,15 @@ export class NodeBase {
     return (latest as this) || this;
   }
 
+  markDirty(): void {
+    const state = $getActiveEditorState();
+    if (state) {
+      state.markDirty(this.__key);
+    } else {
+      this.getWritable();
+    }
+  }
+
   static clone(node: unknown): NodeBase {
     return new NodeBase((node as NodeBase).__key, (node as NodeBase).__parent);
   }
