@@ -64,6 +64,34 @@ FULL_RECONCILE`) that summarises whether reconciliation has work to do.
 `FULL_RECONCILE` is reserved for Phase 4 mutation defense; PR-1 only ever
 sets the first two.
 
+### Copy-on-Write
+
+**Active Context**:
+The module-level binding established for the duration of an `editor.update` 
+transaction. Needed because `getWritable()` must know which editor state 
+is currently receiving mutations.
+
+**Writable Node**:
+The freshly cloned `NodeBase` instance returned by `getWritable()`. All 
+structural mutations are routed through this clone to preserve the integrity 
+of the previous `EditorState`.
+
+**Latest Node**:
+The canonical current instance for a key, accessible via `getLatest()`. Needed 
+when a caller holds a reference to a pre-mutation original node but wants to 
+read fields from the updated clone.
+
+**Clone-not-needed**:
+A per-transaction `Set<NodeKey>` tracking nodes that have already been cloned 
+in the current transaction. Ensures `getWritable()` only clones a node once 
+per update.
+
+**GenMap (Nursery / Old Snapshot)**:
+The two-tier storage mechanism powering `EditorState.nodes`. The `_old` map 
+acts as an immutable snapshot of a prior state, while the `_nursery` lazily 
+buffers writes from the current transaction. Provides O(1) cloning for 
+large documents.
+
 ### DOM Bridge
 
 **Managed DOM Pair**:

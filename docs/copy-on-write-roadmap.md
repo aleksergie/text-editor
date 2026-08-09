@@ -5,8 +5,8 @@ node semantics. Drafted during the PR-2 review; not yet started.
 
 ## Status
 
-**In progress.** Phase C (Active-context globals) is complete.
-Resume here when ready to begin Phase D.
+**Complete.** All phases (A through H) have been successfully implemented and tested.
+The Lexical-style copy-on-write node semantics are now fully integrated.
 
 ## Why This Exists
 
