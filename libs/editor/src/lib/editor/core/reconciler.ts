@@ -99,12 +99,9 @@ export class Reconciler {
    * are reused (and reordered if the chain order shifted), new children are
    * created, removed children are cleaned up at the end.
    *
-   * Source of truth for "what was previously rendered" is `keyToDom`, not
-   * `prev`. `prev` is only consulted for the same-key type-change check and
-   * to walk the model subtree of a removed key during DOM cleanup. This
-   * asymmetry exists because `EditorState.clone` shares `NodeBase` instances
-   * between prev and next - the in-memory tree pointers reflect the
-   * post-mutation state on both sides.
+   * Thanks to Copy-on-Write, `prev` perfectly reflects the pre-mutation tree shape.
+   * We consult it for the same-key type-change check, and to walk the model 
+   * subtree of a removed key during DOM cleanup.
    */
   private reconcileChildren(
     nextElement: ElementNode,
@@ -125,7 +122,7 @@ export class Reconciler {
 
       const existingDom = this.keyToDom.get(nextChildKey);
       const prevChild = prev.nodes.get(nextChildKey);
-      const typeMatches = !prevChild || prevChild.__type === child.__type;
+      const typeMatches = !prevChild || prevChild.constructor === child.constructor;
 
       let childDom: HTMLElement | null;
       if (existingDom && typeMatches) {
@@ -223,10 +220,8 @@ export class Reconciler {
 
   /**
    * Recursively drop `keyToDom` entries for `key` and its model descendants.
-   * Walks via `prev` because the removed subtree's pointers reflect its
-   * pre-removal shape there (state mutations unlink the subtree from its
-   * parent but do not touch the subtree's own internal pointers, and `prev`
-   * still has the removed node in its Map).
+   * Walks via `prev` because state mutations produced new clones in `next`,
+   * leaving `prev` instances and their internal pointers unchanged.
    */
   private deleteKeyToDomSubtree(key: NodeKey, prev: EditorState) {
     this.keyToDom.delete(key);

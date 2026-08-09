@@ -206,11 +206,11 @@ a regular `Map`.
 `Reconciler.render` (full mount path) and incrementally pruned in
 `Reconciler.reconcileChildren` whenever a child DOM is removed - the
 removed key and its model descendants are dropped via
-`deleteKeyToDomSubtree`. The recursive reconciler treats `keyToDom` itself
-as the source of truth for "what was previously rendered" because
-`EditorState.clone` shares `NodeBase` instances between prev and next, so
-prev's `__first` / `__next` pointers reflect the post-mutation tree, not
-the pre-mutation one.
+`deleteKeyToDomSubtree`. **Copy-on-Write Reconciliation**: The recursive reconciler
+treats `prev` as the genuine pre-mutation tree shape, thanks to Lexical-style
+copy-on-write semantics (`getWritable()`). Because every state mutation produces
+fresh node clones in `next`, the pointers (`__first`, `__next`) in `prev` remain
+untouched, eliminating the need to guess the previous structure from the DOM.
 
 ## 3. Runtime Dispatch - How Input Becomes a DOM Change
 
