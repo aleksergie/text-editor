@@ -24,7 +24,7 @@ function mount(text: string, format: number = TextFormat.NONE) {
   editor.setRoot(container);
   editor.update((state) => {
     const t = state.getTextNodesInDocumentOrder()[0];
-    t.text = text;
+    t.setText(text);
     t.setFormat(format);
     state.markDirty(t.key);
   });
@@ -153,7 +153,7 @@ describe('resolveDomSelection', () => {
     editor.setRoot(container);
     editor.update((state) => {
       const first = state.getTextNodesInDocumentOrder()[0];
-      first.text = 'alpha';
+      first.setText('alpha');
       state.markDirty(first.key);
       const second = $createTextNode('seed_t2', 'beta');
       state.insertAfter(first, second);
@@ -186,7 +186,7 @@ describe('resolveDomSelection', () => {
     editor.setRoot(container);
     editor.update((state) => {
       const first = state.getTextNodesInDocumentOrder()[0];
-      first.text = 'hello';
+      first.setText('hello');
       state.markDirty(first.key);
 
       const p2 = $createParagraphNode('p2');
@@ -277,7 +277,7 @@ describe('getFormatIntersection', () => {
     const editor = new Editor();
     editor.update((state) => {
       const first = state.getTextNodesInDocumentOrder()[0];
-      first.text = runs[0].text;
+      first.setText(runs[0].text);
       first.setFormat(runs[0].format);
       state.markDirty(first.key);
 

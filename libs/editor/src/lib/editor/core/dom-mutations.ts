@@ -18,7 +18,7 @@ function handleCharacterDataMutation(editor: Editor, mutation: MutationRecord, c
       return;
     }
     const textHolder = getInnermostTextHolder(pair.dom);
-    if (textHolder && textHolder.textContent !== null && textHolder.textContent !== node.text) {
+    if (textHolder && textHolder.textContent !== null && textHolder.textContent !== node.getText()) {
       characterDataMutations.set(key, textHolder.textContent);
     }
   });

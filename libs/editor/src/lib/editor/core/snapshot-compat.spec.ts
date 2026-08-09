@@ -127,7 +127,7 @@ describe('JSON back-compat', () => {
     );
 
     const texts = state.getTextNodesInDocumentOrder();
-    expect(texts.map((t) => t.text)).toEqual(['hello', 'world']);
+    expect(texts.map((t) => t.getText())).toEqual(['hello', 'world']);
     expect(texts.every((t) => t.format === TextFormat.NONE)).toBe(true);
     // getText() concatenates the run contents; paragraph boundaries are
     // reflected by the linked-list structure, not in the flat text.

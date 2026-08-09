@@ -122,7 +122,7 @@ describe('EditorState.fromJSON', () => {
     
     // setText targets the first text node, so only t1 should have changed.
     const t1 = restored.nodes.get('t1');
-    expect((t1 as unknown as { text: string }).text).toBe('changed');
+    expect((t1 as any).getText()).toBe('changed');
   });
 });
 

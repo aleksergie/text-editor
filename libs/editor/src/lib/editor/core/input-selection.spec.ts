@@ -22,7 +22,7 @@ function paragraphTexts(state: EditorState): string[][] {
       while (textKey) {
         const node = state.nodes.get(textKey);
         if ($isTextNode(node)) {
-          paragraph.push(node.text);
+          paragraph.push(node.getText());
         }
         textKey = node?.__next ?? null;
       }
@@ -49,7 +49,7 @@ function paragraphRuns(state: EditorState): Array<Array<{ text: string; format: 
       while (textKey) {
         const node = state.nodes.get(textKey);
         if ($isTextNode(node)) {
-          paragraph.push({ text: node.text, format: node.format });
+          paragraph.push({ text: node.getText(), format: node.format });
         }
         textKey = node?.__next ?? null;
       }
@@ -206,8 +206,8 @@ describe('selection-aware EditorState mutations', () => {
 
     const next = state.insertParagraphAtRange(
       createTextRange(
-        { key: middle.key, offset: middle.text.length },
-        { key: middle.key, offset: middle.text.length },
+        { key: middle.key, offset: middle.getText().length },
+        { key: middle.key, offset: middle.getText().length },
         false,
       ),
     );
@@ -249,8 +249,8 @@ describe('selection-aware EditorState mutations', () => {
     const [, middle, finalRun] = splitBaselineTextIntoRuns(state);
     const secondParagraphSelection = state.insertParagraphAtRange(
       createTextRange(
-        { key: finalRun.key, offset: finalRun.text.length },
-        { key: finalRun.key, offset: finalRun.text.length },
+        { key: finalRun.key, offset: finalRun.getText().length },
+        { key: finalRun.key, offset: finalRun.getText().length },
         false,
       ),
     );
@@ -259,8 +259,8 @@ describe('selection-aware EditorState mutations', () => {
 
     const next = state.deleteCharacterAtRange(
       createTextRange(
-        { key: middle.key, offset: middle.text.length },
-        { key: middle.key, offset: middle.text.length },
+        { key: middle.key, offset: middle.getText().length },
+        { key: middle.key, offset: middle.getText().length },
         false,
       ),
       false,

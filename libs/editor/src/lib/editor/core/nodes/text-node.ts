@@ -63,9 +63,11 @@ function renderFormattedContent(
 
 export class TextNode extends NodeBase {
   format: TextFormatBits;
+  __text: string;
 
-  constructor(key: string, public text: string, format: TextFormatBits = TextFormat.NONE) {
+  constructor(key: string, text: string, format: TextFormatBits = TextFormat.NONE) {
     super(key);
+    this.__text = text;
     this.format = format;
   }
 
@@ -74,7 +76,7 @@ export class TextNode extends NodeBase {
   }
 
   static override clone(node: unknown): TextNode {
-    return new TextNode((node as TextNode).__key, (node as TextNode).text, (node as TextNode).format);
+    return new TextNode((node as TextNode).__key, (node as TextNode).__text, (node as TextNode).format);
   }
 
   override afterCloneFrom(prev: this): void {
@@ -83,22 +85,25 @@ export class TextNode extends NodeBase {
 
   static override readonly version: number = 2;
 
+  getText(): string {
+    return this.getLatest().__text;
+  }
+
+  setText(text: string): void {
+    this.getWritable().__text = text;
+  }
+
   getFormat(): TextFormatBits {
     return this.format;
   }
 
-  /**
-   * Replace the format bitfield. Does not mutate the node map; callers
-   * inside `editor.update` are expected to mark the node dirty themselves
-   * via `state.markDirty(key)` or via structural helpers.
-   */
   setFormat(format: TextFormatBits): void {
-    this.format = format;
+    this.getWritable().format = format;
   }
 
   override createDOM(): HTMLElement {
     const span = document.createElement('span') as FormattedHost;
-    renderFormattedContent(span, this.text, this.format);
+    renderFormattedContent(span, this.__text, this.format);
     span[LAST_FORMAT] = this.format;
     return span;
   }
@@ -108,7 +113,7 @@ export class TextNode extends NodeBase {
     const prevFormat = host[LAST_FORMAT] ?? TextFormat.NONE;
 
     if (prevFormat !== this.format) {
-      renderFormattedContent(host, this.text, this.format);
+      renderFormattedContent(host, this.__text, this.format);
       host[LAST_FORMAT] = this.format;
       return true;
     }
@@ -118,8 +123,8 @@ export class TextNode extends NodeBase {
     // flip its content. This preserves the exact DOM element identities so
     // any caret the browser is tracking keeps its reference.
     const textHolder = getInnermostTextHolder(host);
-    if (textHolder && textHolder.textContent !== this.text) {
-      textHolder.textContent = this.text;
+    if (textHolder && textHolder.textContent !== this.__text) {
+      textHolder.textContent = this.__text;
       return true;
     }
     return false;
@@ -133,7 +138,7 @@ export class TextNode extends NodeBase {
       parent: this.__parent,
       prev: this.__prev,
       next: this.__next,
-      text: this.text,
+      text: this.__text,
       format: this.format,
     };
   }

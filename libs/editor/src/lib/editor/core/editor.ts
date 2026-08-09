@@ -459,7 +459,7 @@ export class Editor {
     const isPointValid = (node: import('./nodes/node').NodeBase | undefined, offset: number) => {
       if (!node) return false;
       if ($isTextNode(node)) {
-        return offset >= 0 && offset <= node.text.length;
+        return offset >= 0 && offset <= node.getText().length;
       }
       if ($isElementNode(node)) {
         return offset === 0 && node.__size === 0;
@@ -628,8 +628,8 @@ export class Editor {
             if (lastText) {
               state.insertLineBreakAtRange(
                 createTextRange(
-                  { key: lastText.key, offset: lastText.text.length },
-                  { key: lastText.key, offset: lastText.text.length },
+                  { key: lastText.key, offset: lastText.getText().length },
+                  { key: lastText.key, offset: lastText.getText().length },
                   false,
                 ),
               );
@@ -653,8 +653,8 @@ export class Editor {
             if (lastText) {
               state.insertTabAtRange(
                 createTextRange(
-                  { key: lastText.key, offset: lastText.text.length },
-                  { key: lastText.key, offset: lastText.text.length },
+                  { key: lastText.key, offset: lastText.getText().length },
+                  { key: lastText.key, offset: lastText.getText().length },
                   false,
                 ),
               );

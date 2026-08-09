@@ -55,7 +55,7 @@ describe('Formatting integration', () => {
     const editor = getEditor(fixture.componentInstance.editorRef);
     editor.update((state) => {
       const t = state.getTextNodesInDocumentOrder()[0];
-      t.text = 'hello';
+      t.setText('hello');
       state.markDirty(t.key);
     });
     fixture.detectChanges();
@@ -86,7 +86,7 @@ describe('Formatting integration', () => {
     // so the plugin's dispatch path can resolve it.
     editor.update((state) => {
       const t = state.getTextNodesInDocumentOrder()[0];
-      t.text = 'hello';
+      t.setText('hello');
       state.markDirty(t.key);
     });
     fixture.detectChanges();
@@ -143,7 +143,7 @@ describe('Formatting integration', () => {
     [editorA, editorB].forEach((editor) => {
       editor.update((state) => {
         const t = state.getTextNodesInDocumentOrder()[0];
-        t.text = 'hello';
+        t.setText('hello');
         state.markDirty(t.key);
       });
     });
@@ -223,7 +223,7 @@ describe('Formatting integration', () => {
       const toolbar = fixture.componentInstance.toolbar;
       editor.update((state) => {
         const t = state.getTextNodesInDocumentOrder()[0];
-        t.text = 'hello';
+        t.setText('hello');
         state.markDirty(t.key);
       });
       editor.dispatchCommand(FORMAT_TEXT, {
@@ -260,7 +260,7 @@ describe('Formatting integration', () => {
       // a partially-formatted run we can select across.
       editor.update((state) => {
         const t = state.getTextNodesInDocumentOrder()[0];
-        t.text = 'helloworld';
+        t.setText('helloworld');
         state.markDirty(t.key);
       });
       fixture.detectChanges();
@@ -309,7 +309,7 @@ describe('Formatting integration', () => {
 
       editor.update((state) => {
         const t = state.getTextNodesInDocumentOrder()[0];
-        t.text = 'hello';
+        t.setText('hello');
         state.markDirty(t.key);
       });
       fixture.detectChanges();
@@ -370,7 +370,7 @@ describe('Formatting integration', () => {
         [editorA, editorB].forEach((editor) => {
           editor.update((state) => {
             const t = state.getTextNodesInDocumentOrder()[0];
-            t.text = 'hello';
+            t.setText('hello');
             state.markDirty(t.key);
           });
         });

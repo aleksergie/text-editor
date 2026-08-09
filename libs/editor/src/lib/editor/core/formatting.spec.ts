@@ -21,7 +21,7 @@ function seedEditor(
   editor.update((state) => {
     // Reuse baseline paragraph + empty text node, then append more siblings.
     const baselineText = state.getTextNodesInDocumentOrder()[0];
-    baselineText.text = runs[0].text;
+    baselineText.setText(runs[0].text);
     baselineText.setFormat(runs[0].format ?? 0);
     state.markDirty(baselineText.key);
 
@@ -54,7 +54,7 @@ function rangeBetween(
 
 function snapshotRuns(state: EditorState): Array<{ text: string; format: number }> {
   return state.getTextNodesInDocumentOrder().map((n) => ({
-    text: n.text,
+    text: n.getText(),
     format: n.format,
   }));
 }
@@ -104,7 +104,7 @@ describe('FORMAT_TEXT command', () => {
     const editor = new Editor();
     editor.update((state) => {
       const firstText = state.getTextNodesInDocumentOrder()[0];
-      firstText.text = 'left';
+      firstText.setText('left');
       firstText.setFormat(TextFormat.BOLD);
       state.markDirty(firstText.key);
 
@@ -207,7 +207,7 @@ describe('FORMAT_TEXT command', () => {
     editor.update((state) => {
       // baseline has "" in p1; append p2 > "world"
       const firstText = state.getTextNodesInDocumentOrder()[0];
-      firstText.text = 'hello';
+      firstText.setText('hello');
       state.markDirty(firstText.key);
 
       const p2 = $createParagraphNode('p2');
@@ -228,7 +228,7 @@ describe('FORMAT_TEXT command', () => {
 
     const nodes = editor.getEditorState().getTextNodesInDocumentOrder();
     const runs = nodes.map((n) => ({
-      text: n.text,
+      text: n.getText(),
       format: n.format,
       parent: n.parent,
     }));
@@ -271,13 +271,13 @@ describe('EditorState.splitTextNodeAt', () => {
     const editor = new Editor();
     editor.update((state) => {
       const t = state.getTextNodesInDocumentOrder()[0];
-      t.text = 'helloworld';
+      t.setText('helloworld');
       t.getWritable().setFormat(TextFormat.ITALIC);
       const res = state.splitTextNodeAt(t, 5);
       const left = res.left;
       const right = res.right;
-      expect(left?.text).toBe('hello');
-      expect(right?.text).toBe('world');
+      expect(left?.getText()).toBe('hello');
+      expect(right?.getText()).toBe('world');
       expect(right?.format).toBe(TextFormat.ITALIC);
       // Insertion order preserved: left.next === right.key
       expect(left?.next).toBe(right?.key);
@@ -288,10 +288,10 @@ describe('EditorState.splitTextNodeAt', () => {
     const editor = new Editor();
     editor.update((state) => {
       const t = state.getTextNodesInDocumentOrder()[0];
-      t.getWritable().text = 'xy';
+      t.setText('xy');
       const result = state.splitTextNodeAt(t, 0);
       expect(result.left).toBeNull();
-      expect(result.right?.text).toBe('xy');
+      expect(result.right?.getText()).toBe('xy');
     });
   });
 
@@ -299,9 +299,9 @@ describe('EditorState.splitTextNodeAt', () => {
     const editor = new Editor();
     editor.update((state) => {
       const t = state.getTextNodesInDocumentOrder()[0];
-      t.getWritable().text = 'xy';
+      t.setText('xy');
       const result = state.splitTextNodeAt(t, 2);
-      expect(result.left?.text).toBe('xy');
+      expect(result.left?.getText()).toBe('xy');
       expect(result.right).toBeNull();
     });
   });

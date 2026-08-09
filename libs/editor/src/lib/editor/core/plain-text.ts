@@ -29,12 +29,12 @@ export function toPlainText(state: EditorState): string {
       while (textKey) {
         const textNode = state.nodes.get(textKey);
         if ($isTextNode(textNode)) {
-          lineText += textNode.text;
+          lineText += textNode.getText();
         }
         textKey = textNode?.__next ?? null;
       }
     } else if ($isTextNode(block)) {
-      lineText = block.text;
+      lineText = block.getText();
     }
 
     lines.push(lineText);

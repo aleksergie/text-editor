@@ -173,14 +173,14 @@ export function resolveDomSelection(
     anchorHost,
     sel.anchorNode,
     sel.anchorOffset,
-    anchorNode.text.length,
+    anchorNode.getText().length,
   ) : 0;
   
   const focusOffset = $isTextNode(focusNode) ? normalizeOffsetWithinTextNode(
     focusHost,
     sel.focusNode,
     sel.focusOffset,
-    focusNode.text.length,
+    focusNode.getText().length,
   ) : 0;
 
   const isBackward = isSelectionBackward(

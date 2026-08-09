@@ -75,7 +75,7 @@ function resolveModelPointToDom(editor: Editor, point: TextPoint): DomPoint | nu
     return null;
   }
 
-  return findDomPointInHost(host, point.offset, node.text.length);
+  return findDomPointInHost(host, point.offset, node.getText().length);
 }
 
 /**

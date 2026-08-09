@@ -67,7 +67,7 @@ describe('TextNode (formatted rendering)', () => {
     const dom = node.createDOM();
     const strongBefore = dom.firstElementChild;
 
-    node.text = 'hello';
+    (node as any).__text = 'hello';
     const mutated = node.updateDOM(dom);
 
     expect(mutated).toBe(true);
@@ -89,7 +89,7 @@ describe('TextNode (formatted rendering)', () => {
 
     const restored = TextNode.importJSON(json);
     expect(restored.format).toBe(TextFormat.BOLD | TextFormat.ITALIC);
-    expect(restored.text).toBe('hi');
+    expect(restored.getText()).toBe('hi');
   });
 
   it('importJSON defaults missing format to 0 for V1 back-compat', () => {
@@ -104,6 +104,6 @@ describe('TextNode (formatted rendering)', () => {
     };
     const restored = TextNode.importJSON(v1Record);
     expect(restored.format).toBe(0);
-    expect(restored.text).toBe('hi');
+    expect(restored.getText()).toBe('hi');
   });
 });
